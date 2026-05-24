@@ -1,0 +1,247 @@
+# =============================================================================
+# Pollux Kernel CI/CD — Build, Notify & Release
+# =============================================================================
+# Secrets required (Settings → Secrets and variables → Actions):
+#   TELEGRAM_BOT_TOKEN    - Bot token from @BotFather
+#   TELEGRAM_CHANNEL_ID   - Channel/chat ID (e.g., -1001234567890)
+# =============================================================================
+
+name: Build Pollux Kernel
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.opencode/**'
+      - '.github/scripts/**'
+      - '.github/workflows/notify-telegram.yml'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.opencode/**'
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Build variant'
+        required: true
+        default: '0'
+        type: choice
+        options:
+          - '0 — Nightly'
+          - '1 — Stable'
+          - '2 — Hotfix'
+      defconfig:
+        description: 'Defconfig'
+        required: true
+        default: 'fire_defconfig'
+        type: choice
+        options:
+          - fire_defconfig
+          - mt6768_defconfig
+          - mt6768_defconfig.debug
+      lto:
+        description: 'LTO mode'
+        required: true
+        default: 'thin'
+        type: choice
+        options:
+          - thin
+          - full
+          - none
+
+env:
+  # Version
+  POLLUX_VARIANT: ${{ inputs.variant || '0' }}
+  POLLUX_DATE: ${{ github.event_name == 'workflow_dispatch' && '' || format('{0}{1}{2}', github.run_number, github.run_attempt, github.sha) }}
+
+  # Build
+  DEFCONFIG: ${{ inputs.defconfig || 'fire_defconfig' }}
+  ARCH: arm64
+  LTO: ${{ inputs.lto || 'thin' }}
+  OUT_DIR: out
+
+  # Clang
+  CLANG_REPO: https://github.com/naidrahiqa/cyrene_clang
+  CLANG_VERSION: Cyrene Clang 22.1.0
+
+  # KernelSU
+  KERNELSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
+  KERNELSU_BRANCH: legacy
+
+  # SUSFS
+  SUSFS_REPO: https://github.com/naidrahiqa/susf4ksu-legacy.git
+
+jobs:
+  build:
+    name: Build Pollux Kernel
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.POLLUX_VERSION }}
+      tag: ${{ steps.version.outputs.POLLUX_TAG }}
+      variant: ${{ steps.version.outputs.POLLUX_VARIANT }}
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      # ── Version ────────────────────────────────────────────────────
+      - name: Generate version
+        id: version
+        run: |
+          source .github/scripts/version.sh "${POLLUX_VARIANT}"
+          echo "POLLUX_VERSION=${POLLUX_VERSION}" >> $GITHUB_OUTPUT
+          echo "POLLUX_TAG=${POLLUX_TAG}" >> $GITHUB_OUTPUT
+          echo "POLLUX_VARIANT=${BUILD_VARIANT}" >> $GITHUB_OUTPUT
+
+      # ── Notify: Build Start ────────────────────────────────────────
+      - name: Notify build start
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          bash .github/scripts/notify-telegram.sh \
+            start \
+            "${{ steps.version.outputs.POLLUX_VERSION }}" \
+            "${{ steps.version.outputs.POLLUX_TAG }}"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+
+      # ── Install Dependencies ──────────────────────────────────────
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential cpio flex \
+            libssl-dev libelf-dev zstd \
+            python3 python3-pip \
+            ccache
+
+      # ── Setup cyrene_clang ────────────────────────────────────────
+      - name: Setup cyrene_clang
+        run: |
+          bash <(wget -qO- https://raw.githubusercontent.com/naidrahiqa/cyrene_clang/main/get_clang.sh)
+          echo "$HOME/toolchains/cyrene/bin" >> $GITHUB_PATH
+          clang --version
+
+      # ── Configure Kernel ──────────────────────────────────────────
+      - name: Configure kernel
+        run: |
+          make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} CC=clang ${{ env.DEFCONFIG }}
+
+      # ── Build Kernel ──────────────────────────────────────────────
+      - name: Build kernel
+        id: build
+        continue-on-error: true
+        run: |
+          make -j$(nproc) \
+            O=${{ env.OUT_DIR }} \
+            ARCH=${{ env.ARCH }} \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            STRIP=llvm-strip \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            LTO=${{ env.LTO }} \
+            2>&1 | tee build.log
+
+      # ── Check Build Status ────────────────────────────────────────
+      - name: Check build result
+        id: check
+        run: |
+          if [ -f ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      # ── Generate Changelog ────────────────────────────────────────
+      - name: Generate changelog
+        if: steps.check.outputs.status == 'success'
+        id: changelog
+        run: |
+          bash .github/scripts/generate-changelog.sh > changelog.md
+          echo "path=changelog.md" >> $GITHUB_OUTPUT
+
+      # ── Package Artifacts ─────────────────────────────────────────
+      - name: Package artifacts
+        if: steps.check.outputs.status == 'success'
+        run: |
+          mkdir -p artifacts
+          # Kernel image
+          cp ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz artifacts/ 2>/dev/null || true
+          # Device tree blobs
+          find ${{ env.OUT_DIR }}/arch/arm64/boot/dts -name "*.dtb" -exec cp {} artifacts/ \; 2>/dev/null || true
+          find ${{ env.OUT_DIR }}/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} artifacts/ \; 2>/dev/null || true
+          # Build artifacts
+          cp build.log artifacts/
+          cp ${{ env.OUT_DIR }}/.config artifacts/config 2>/dev/null || true
+          # Compress
+          cd artifacts
+          tar -I zstd -cf ../pollux-kernel-${{ steps.version.outputs.POLLUX_TAG }}.tar.zst *
+          cd ..
+          ls -lh pollux-kernel-*.tar.zst
+
+      # ── Create GitHub Release ──────────────────────────────────────
+      - name: Create Release
+        if: steps.check.outputs.status == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.POLLUX_TAG }}
+          name: Pollux ${{ steps.version.outputs.POLLUX_VERSION }}
+          body_path: ${{ steps.changelog.outputs.path || '' }}
+          files: |
+            pollux-kernel-${{ steps.version.outputs.POLLUX_TAG }}.tar.zst
+            artifacts/Image.gz
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Upload Artifacts ──────────────────────────────────────────
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pollux-kernel-${{ steps.version.outputs.POLLUX_TAG }}
+          path: |
+            artifacts/
+            build.log
+            changelog.md
+          retention-days: 7
+
+      # ── Notify: Build Success ─────────────────────────────────────
+      - name: Notify build success
+        if: steps.check.outputs.status == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: |
+          bash .github/scripts/notify-telegram.sh \
+            success \
+            "${{ steps.version.outputs.POLLUX_VERSION }}" \
+            "${{ steps.version.outputs.POLLUX_TAG }}" \
+            "${{ steps.changelog.outputs.path }}"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+
+      # ── Notify: Build Failed ──────────────────────────────────────
+      - name: Notify build failed
+        if: failure() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: |
+          bash .github/scripts/notify-telegram.sh \
+            failed \
+            "${{ steps.version.outputs.POLLUX_VERSION }}" \
+            "${{ steps.version.outputs.POLLUX_TAG }}" \
+            "build.log"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          TELEGRAM_ERROR_CHANNEL_ID: ${{ secrets.TELEGRAM_ERROR_CHANNEL_ID }}

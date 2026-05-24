@@ -1,0 +1,160 @@
+---
+name: kernel-build
+description: Use ONLY for building the Pollux kernel with cyrene_clang toolchain. Handles toolchain setup, defconfig configuration, kernel compilation, and artifact packaging. NOT for repo init or patching.
+---
+
+# Skill: kernel-build
+
+Builds the Pollux kernel using cyrene_clang toolchain.
+
+## Prerequisites
+
+- Kernel source initialized + patched (kernel-init + kernel-patch done)
+- Linux build environment (GitHub Actions Ubuntu runner or local Linux)
+- ~12GB+ free RAM, ~30GB+ free disk
+
+## Steps
+
+### 1. Set Up cyrene_clang Toolchain
+
+Download latest cyrene_clang release:
+
+```bash
+# One-liner installer
+bash <(wget -qO- https://raw.githubusercontent.com/naidrahiqa/cyrene_clang/main/get_clang.sh)
+
+# Or manual
+wget https://raw.githubusercontent.com/naidrahiqa/cyrene_clang/main/clang-version.txt
+DOWNLOAD_URL=$(grep DOWNLOAD_URL clang-version.txt | cut -d= -f2)
+wget "$DOWNLOAD_URL"
+mkdir -p $HOME/toolchains
+tar -I zstd -xf cyrene-clang-*.tar.zst -C $HOME/toolchains/
+```
+
+Set PATH:
+```bash
+export PATH="$HOME/toolchains/cyrene/bin:$PATH"
+```
+
+### 2. Configure Defconfig
+
+Create/update Pollux defconfig:
+
+```bash
+# Copy existing MT6768 defconfig as base
+cp arch/arm64/configs/mt6768_defconfig arch/arm64/configs/fire_defconfig
+
+# Or merge with SUSFS/KSU configs
+cat <<EOF >> arch/arm64/configs/fire_defconfig
+# KernelSU-Next
+CONFIG_KSU=y
+CONFIG_KSU_SUSFS=y
+
+# SUSFS features
+CONFIG_KSU_SUSFS_SUS_PATH=y
+CONFIG_KSU_SUSFS_SUS_MOUNT=y
+CONFIG_KSU_SUSFS_SUS_KSTAT=y
+CONFIG_KSU_SUSFS_SUS_MAP=y
+CONFIG_KSU_SUSFS_SUS_SU=y
+CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
+CONFIG_KSU_SUSFS_TRY_UMOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
+CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
+CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+CONFIG_KSU_SUSFS_ENABLE_LOG=n
+
+# Pollux
+CONFIG_LOCALVERSION="-Pollux"
+EOF
+```
+
+Generate .config:
+```bash
+make O=out ARCH=arm64 fire_defconfig
+```
+
+### 3. Build Kernel
+
+```bash
+make -j$(nproc) \
+  O=out \
+  ARCH=arm64 \
+  CC=clang \
+  LD=ld.lld \
+  AR=llvm-ar \
+  NM=llvm-nm \
+  STRIP=llvm-strip \
+  OBJCOPY=llvm-objcopy \
+  OBJDUMP=llvm-objdump \
+  CLANG_TRIPLE=aarch64-linux-gnu- \
+  CROSS_COMPILE=aarch64-linux-gnu- \
+  2>&1 | tee build.log
+```
+
+### 4. Package Artifacts
+
+```bash
+# Kernel image
+cp out/arch/arm64/boot/Image.gz out/
+
+# Device tree blobs
+cp out/arch/arm64/boot/dts/mediatek/*.dtb out/
+
+# DTBO (if applicable)
+find out/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} out/ \;
+
+# Module tree (optional)
+make O=out ARCH=arm64 modules_install INSTALL_MOD_PATH=out/modules
+```
+
+### 5. Verify
+
+```bash
+# Check kernel version
+strings out/arch/arm64/boot/Image.gz | grep "Pollux"
+
+# Check SUSFS symbols (if built-in)
+strings out/vmlinux | grep susfs
+
+# Check size
+ls -lh out/Image.gz
+```
+
+## Input Parameters
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEFCONFIG` | `fire_defconfig` | Target defconfig name |
+| `ARCH` | `arm64` | Target architecture |
+| `CLANG_PATH` | `$HOME/toolchains/cyrene` | Path to cyrene_clang |
+| `JOBS` | `nproc` | Parallel build jobs |
+| `OUT_DIR` | `out` | Build output directory |
+
+## CI Integration
+
+For GitHub Actions, use `ubuntu-22.04` or `ubuntu-24.04` runner:
+
+```yaml
+- name: Checkout
+  uses: actions/checkout@v4
+
+- name: Setup cyrene_clang
+  run: |
+    bash <(wget -qO- https://raw.githubusercontent.com/naidrahiqa/cyrene_clang/main/get_clang.sh)
+    echo "$HOME/toolchains/cyrene/bin" >> $GITHUB_PATH
+
+- name: Build kernel
+  run: |
+    make O=out ARCH=arm64 fire_defconfig
+    make -j$(nproc) O=out ARCH=arm64 CC=clang ...
+```
+
+## Troubleshooting
+
+- **LLVM IAS errors**: Try `LLVM_IAS=0` to use GNU assembler
+- **Out of memory**: Reduce `-j` jobs
+- **Missing toolchain**: Run `clang --version` to verify
+- **LTO issues**: Add `LTO=thin` or `LTO=none` to make flags

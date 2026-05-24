@@ -1,0 +1,74 @@
+# Pollux Kernel Workflow Configuration
+team:
+  name: "Pollux Kernel Development"
+  project: "pollux_kernel_xiaomi_fire"
+  size: 4
+  leads: ["Kernel Initializer", "Kernel Builder"]
+
+skills:
+  kernel-init:
+    base_repo: "https://github.com/mt6768-dev/android_kernel_xiaomi_fire.git"
+    base_branch: "lineage-23.2"
+    cip_repo: "https://git.kernel.org/pub/scm/linux/kernel/git/cip/linux-cip.git"
+    cip_tag: "v4.19.325-cip134"
+    localversion: "-Pollux"
+    remote_origin: "https://github.com/naidrahiqa/pollux_kernel_xiaomi_fire.git"
+    timeout_seconds: 300
+
+  kernel-patch:
+    susfs_repo: "https://github.com/naidrahiqa/susf4ksu-legacy.git"
+    kernelsu_repo: "https://github.com/KernelSU-Next/KernelSU-Next.git"
+    kernelsu_branch: "legacy"
+    apply_flags: "--kernelsu-next --mtk"
+    verify_on_complete: true
+    timeout_seconds: 300
+
+  kernel-build:
+    defconfig: "fire_defconfig"
+    arch: "arm64"
+    clang_repo: "https://github.com/naidrahiqa/cyrene_clang.git"
+    lto_mode: "thin"
+    jobs: 0
+    output_dir: "out"
+    timeout_seconds: 3600
+
+  kernel-ci:
+    runner: "ubuntu-24.04"
+    workflow_file: ".github/workflows/build.yml"
+    artifact_retention_days: 7
+    release_on_tag: true
+
+workflows:
+  full-setup:
+    enabled: true
+    strict_mode: true
+    auto_commit: true
+    steps: [kernel-init, kernel-patch, kernel-ci]
+
+  build-kernel:
+    enabled: true
+    strict_mode: false
+    parallel_jobs: 4
+    notify_on_failure: true
+
+  ci-build:
+    enabled: true
+    strict_mode: true
+
+  patch-update:
+    enabled: true
+    strict_mode: false
+    force_reapply: true
+
+notifications:
+  default_channels: ["console"]
+  include_build_log: true
+  include_artifacts: true
+  critical_issues:
+    channels: ["console"]
+    auto_report: true
+
+defaults:
+  timeout_seconds: 600
+  retry_count: 1
+  log_level: "info"
