@@ -12,7 +12,8 @@ Sets up GitHub Actions CI/CD for automated Pollux kernel builds.
 ```
 .github/
 ├── workflows/
-│   ├── build.yml          ← Main build pipeline
+│   ├── build.yml          ← Orchestrator: Telegram, versioning, changelog, release
+│   ├── build-core.yml     ← Reusable workflow: actual kernel build (deps, toolchain, compile)
 │   └── patch.yml          ← KernelSU/SUSFS patch workflow (manual trigger)
 ├── scripts/
 │   ├── version.sh         ← Version management (PolluxXDDMMYY)
@@ -125,29 +126,49 @@ Groups commits by type:
 
 ## Workflows
 
-### build.yml — Main Pipeline
+### build.yml — Orchestrator
 
 ```yaml
 Triggers:
   - push to main
-  - pull request to main
   - workflow_dispatch (with variant, defconfig, LTO inputs)
+
+Jobs:
+  1. version       → Generate version via version.sh
+  2. notify-start  → Telegram "Build Started" notification
+  3. core-build    → Calls build-core.yml (reusable workflow)
+  4. generate-changelog → Changelog from git log (if build succeeded)
+  5. create-release → GitHub Release with artifacts (if build succeeded)
+  6. notify-success → Telegram "Build Released" (if build succeeded)
+  7. notify-failed  → Telegram error notification (if build failed)
+```
+
+### build-core.yml — Core Build (Reusable)
+
+```yaml
+Called by: build.yml (via `uses: ./.github/workflows/build-core.yml`)
 
 Steps:
   1. Checkout (submodules: recursive)
-  2. Generate version
-  3. Notify build start (Telegram)
-  4. Install deps
-  5. Setup cyrene_clang
-  6. make defconfig
-  7. make -j$(nproc) CC=clang ...
-  8. Check build result
-  9. Generate changelog
-  10. Package artifacts (tar.zst)
-  11. Create GitHub Release (with changelog)
-  12. Upload artifacts
-  13. Notify success/failure (Telegram)
+  2. Install deps (system clang via apt + build tools)
+  3. Setup cyrene_clang (NOT added to PATH — only for LD/AR/etc.)
+  4. Clone SUSFS backport + apply patches
+  5. Check for .rej files
+  6. make defconfig (CC=gcc)
+  7. make -j$(nproc) CC=clang (system clang), LD/AR/etc from cyrene_clang
+  8. Final check — set status output (NO exit 1!)
+  9. Package artifacts (tar.zst)
+  10. Upload as GitHub Actions artifact
+
+Outputs:
+  - status: "success" or "failed"
 ```
+
+Key design:
+- CC=clang → system `/usr/bin/clang` (supports x86_64 + aarch64 targets)
+- LD/AR/NM/STRIP/OBJCOPY/OBJDUMP → from cyrene_clang toolchain
+- CROSS_COMPILE NOT set → Makefile.clang uses CLANG_TARGET_FLAGS_arm64
+- Final check uses `if: always()` so output is set even on failure
 
 ### patch.yml — KernelSU + SUSFS Patcher
 

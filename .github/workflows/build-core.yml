@@ -1,0 +1,159 @@
+# =============================================================================
+# Pollux Kernel CI/CD — Core Build (reusable workflow)
+# Called by build.yml (orchestrator)
+# =============================================================================
+# Does: deps, toolchain, patching, configure, build, upload artifacts
+# Does NOT: notify, release, versioning — those are in build.yml
+# =============================================================================
+
+name: Build Pollux Kernel (Core)
+
+on:
+  workflow_call:
+    inputs:
+      defconfig:
+        required: true
+        type: string
+      lto:
+        required: true
+        type: string
+      kernel_version:
+        required: true
+        type: string
+      kernel_tag:
+        required: true
+        type: string
+    outputs:
+      status:
+        description: 'Build result (success/failed)'
+        value: ${{ jobs.build.outputs.status }}
+
+env:
+  ARCH: arm64
+  OUT_DIR: out
+  CLANG_REPO: https://github.com/naidrahiqa/cyrene_clang
+  SUSFS_REPO: https://github.com/naidrahiqa/susf4ksu-legacy.git
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-24.04
+    outputs:
+      status: ${{ steps.final-check.outputs.status }}
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      # ── Install Dependencies ──────────────────────────────────────
+      # Install system clang + lld for CC (supports all targets incl. aarch64)
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential cpio flex \
+            libssl-dev libelf-dev zstd \
+            python3 python3-pip \
+            patch p7zip-full wiggle \
+            libc++-dev libc++abi-dev lld \
+            clang
+
+      # ── Setup cyrene_clang ────────────────────────────────────────
+      # Do NOT add to PATH — use system clang for CC (works with Kconfig shell calls)
+      # Store cyrene_clang directory for explicit LD/AR/NM/STRIP/OBJCOPY/OBJDUMP
+      - name: Setup cyrene_clang
+        run: |
+          bash <(wget -qO- https://raw.githubusercontent.com/naidrahiqa/cyrene_clang/main/get_clang.sh)
+          echo "CLANG_DIR=$HOME/toolchains/cyrene/bin" >> $GITHUB_ENV
+          /usr/bin/clang --version
+
+      # ── Apply KernelSU-Next + SUSFS Patches ──────────────────────
+      - name: Clone SUSFS backport
+        run: |
+          git clone --depth=1 ${SUSFS_REPO} ../susf4ksu-legacy
+
+      - name: Apply SUSFS patches
+        run: |
+          bash ../susf4ksu-legacy/core-scripts/apply.sh \
+            . \
+            --kernelsu-next \
+            --mtk
+
+      - name: Check for rejected patches
+        run: |
+          REJ_COUNT=$(find . -name "*.rej" 2>/dev/null | wc -l)
+          if [ "$REJ_COUNT" -gt 0 ]; then
+            echo "::error::Found $REJ_COUNT .rej files — patch failed"
+            find . -name "*.rej" -exec cat {} \;
+            exit 1
+          fi
+          echo "All patches applied cleanly"
+
+      # ── Configure Kernel ──────────────────────────────────────────
+      - name: Configure kernel
+        run: |
+          make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} CC=gcc HOSTCC=gcc ${{ inputs.defconfig }}
+
+      # ── Build Kernel ──────────────────────────────────────────────
+      # CC=clang → /usr/bin/clang (system clang, supports all targets)
+      # LD/AR/etc → from cyrene_clang toolchain
+      # CROSS_COMPILE not set → Makefile.clang uses CLANG_TARGET_FLAGS_arm64
+      - name: Build kernel
+        id: build
+        continue-on-error: true
+        run: |
+          make -j$(nproc) \
+            O=${{ env.OUT_DIR }} \
+            ARCH=${{ env.ARCH }} \
+            CC=clang \
+            HOSTCC=gcc \
+            LD=$CLANG_DIR/ld.lld \
+            AR=$CLANG_DIR/llvm-ar \
+            NM=$CLANG_DIR/llvm-nm \
+            STRIP=$CLANG_DIR/llvm-strip \
+            OBJCOPY=$CLANG_DIR/llvm-objcopy \
+            OBJDUMP=$CLANG_DIR/llvm-objdump \
+            LTO=${{ inputs.lto }} \
+            2>&1 | tee build.log
+
+      # ── Check Build Status ────────────────────────────────────────
+      # NO exit 1! Just set output so Telegram notif can fire regardless
+      - name: Final check
+        id: final-check
+        if: always()
+        run: |
+          if [ -f ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Package Artifacts ─────────────────────────────────────────
+      - name: Package artifacts
+        if: always()
+        run: |
+          mkdir -p artifacts
+          cp ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz artifacts/ 2>/dev/null || true
+          find ${{ env.OUT_DIR }}/arch/arm64/boot/dts -name "*.dtb" -exec cp {} artifacts/ \; 2>/dev/null || true
+          find ${{ env.OUT_DIR }}/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} artifacts/ \; 2>/dev/null || true
+          cp build.log artifacts/ 2>/dev/null || true
+          cp ${{ env.OUT_DIR }}/.config artifacts/config 2>/dev/null || true
+          cd artifacts
+          tar -I zstd -cf ../pollux-kernel-${{ inputs.kernel_tag }}.tar.zst * 2>/dev/null || true
+          cd ..
+          ls -lh pollux-kernel-*.tar.zst 2>/dev/null || true
+
+      # ── Upload Build Artifacts ────────────────────────────────────
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-build-${{ inputs.kernel_tag }}
+          path: |
+            artifacts/
+            build.log
+            pollux-kernel-*.tar.zst
+          retention-days: 7

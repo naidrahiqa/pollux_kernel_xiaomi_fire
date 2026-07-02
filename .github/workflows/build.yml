@@ -1,5 +1,7 @@
 # =============================================================================
-# Pollux Kernel CI/CD — Patch + Build + Notify + Release
+# Pollux Kernel CI/CD — Orchestrator
+# Handles: versioning, Telegram notifications, changelog, GitHub releases
+# Delegates actual build to build-core.yml (reusable workflow)
 # =============================================================================
 # Secrets required (Settings → Secrets and variables → Actions):
 #   TELEGRAM_BOT_TOKEN        - Bot token from @BotFather
@@ -49,195 +51,149 @@ on:
 env:
   POLLUX_VARIANT: ${{ inputs.variant || '0' }}
   DEFCONFIG: ${{ inputs.defconfig || 'fire_defconfig' }}
-  ARCH: arm64
   LTO: ${{ inputs.lto || 'thin' }}
-  OUT_DIR: out
-  CLANG_REPO: https://github.com/naidrahiqa/cyrene_clang
-  KERNELSU_BRANCH: legacy
-  SUSFS_REPO: https://github.com/naidrahiqa/susf4ksu-legacy.git
 
 jobs:
-  build:
-    name: Build Pollux Kernel
+  # ── Version ────────────────────────────────────────────────────────
+  version:
+    name: Generate version
     runs-on: ubuntu-24.04
-
+    outputs:
+      version: ${{ steps.v.outputs.POLLUX_VERSION }}
+      tag: ${{ steps.v.outputs.POLLUX_TAG }}
     steps:
-      # ── Checkout ──────────────────────────────────────────────────
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-
-      # ── Version ────────────────────────────────────────────────────
+      - uses: actions/checkout@v4
       - name: Generate version
-        id: version
+        id: v
         run: |
           source .github/scripts/version.sh "${POLLUX_VARIANT}"
           echo "POLLUX_VERSION=${POLLUX_VERSION}" >> $GITHUB_OUTPUT
           echo "POLLUX_TAG=${POLLUX_TAG}" >> $GITHUB_OUTPUT
-          echo "POLLUX_VARIANT=${BUILD_VARIANT}" >> $GITHUB_OUTPUT
 
-      # ── Notify: Build Start ────────────────────────────────────────
-      - name: Notify build start
-        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+  # ── Notify: Build Start ────────────────────────────────────────────
+  notify-start:
+    name: Notify build start
+    needs: [version]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Send Telegram start
+        if: github.event_name != 'pull_request'
         run: |
           bash .github/scripts/notify-telegram.sh \
             start \
-            "${{ steps.version.outputs.POLLUX_VERSION }}" \
-            "${{ steps.version.outputs.POLLUX_TAG }}"
+            "${{ needs.version.outputs.version }}" \
+            "${{ needs.version.outputs.tag }}"
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
 
-      # ── Install Dependencies ──────────────────────────────────────
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            bc bison build-essential cpio flex \
-            libssl-dev libelf-dev zstd \
-            python3 python3-pip \
-            patch p7zip-full wiggle \
-            libc++-dev libc++abi-dev lld
+  # ── Core Build ─────────────────────────────────────────────────────
+  core-build:
+    name: Build kernel
+    needs: [version]
+    uses: ./.github/workflows/build-core.yml
+    with:
+      defconfig: ${{ env.DEFCONFIG }}
+      lto: ${{ env.LTO }}
+      kernel_version: ${{ needs.version.outputs.version }}
+      kernel_tag: ${{ needs.version.outputs.tag }}
 
-      # ── Setup cyrene_clang ────────────────────────────────────────
-      - name: Setup cyrene_clang
-        run: |
-          bash <(wget -qO- https://raw.githubusercontent.com/naidrahiqa/cyrene_clang/main/get_clang.sh)
-          echo "$HOME/toolchains/cyrene/bin" >> $GITHUB_PATH
-          clang --version
-
-      # ── Apply KernelSU-Next + SUSFS Patches ──────────────────────
-      - name: Clone SUSFS backport
-        run: |
-          git clone --depth=1 ${SUSFS_REPO} ../susf4ksu-legacy
-
-      - name: Apply SUSFS patches
-        run: |
-          bash ../susf4ksu-legacy/core-scripts/apply.sh \
-            . \
-            --kernelsu-next \
-            --mtk
-
-      - name: Check for rejected patches
-        run: |
-          REJ_COUNT=$(find . -name "*.rej" 2>/dev/null | wc -l)
-          if [ "$REJ_COUNT" -gt 0 ]; then
-            echo "::error::Found $REJ_COUNT .rej files — patch failed"
-            find . -name "*.rej" -exec cat {} \;
-            exit 1
-          fi
-          echo "All patches applied cleanly"
-
-      # ── Configure Kernel ──────────────────────────────────────────
-      - name: Configure kernel
-        run: |
-          make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} CC=gcc HOSTCC=gcc ${{ env.DEFCONFIG }}
-
-      # ── Build Kernel ──────────────────────────────────────────────
-      - name: Build kernel
-        id: build
-        continue-on-error: true
-        run: |
-          make -j$(nproc) \
-            O=${{ env.OUT_DIR }} \
-            ARCH=${{ env.ARCH }} \
-            CC=clang \
-            HOSTCC=gcc \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            STRIP=llvm-strip \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            LTO=${{ env.LTO }} \
-            2>&1 | tee build.log
-
-      # ── Check Build Status ────────────────────────────────────────
-      - name: Check build result
-        id: check
-        run: |
-          if [ -f ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz ]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo "status=failed" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-      # ── Generate Changelog ────────────────────────────────────────
+  # ── Generate Changelog ─────────────────────────────────────────────
+  generate-changelog:
+    name: Generate changelog
+    needs: [version, core-build]
+    if: needs.core-build.outputs.status == 'success'
+    runs-on: ubuntu-24.04
+    outputs:
+      path: ${{ steps.cl.outputs.path }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Generate changelog
-        if: steps.check.outputs.status == 'success'
-        id: changelog
+        id: cl
         run: |
           bash .github/scripts/generate-changelog.sh > changelog.md
           echo "path=changelog.md" >> $GITHUB_OUTPUT
+      - name: Upload changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog-${{ needs.version.outputs.tag }}
+          path: changelog.md
+          retention-days: 7
 
-      # ── Package Artifacts ─────────────────────────────────────────
-      - name: Package artifacts
-        if: steps.check.outputs.status == 'success'
-        run: |
-          mkdir -p artifacts
-          cp ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz artifacts/ 2>/dev/null || true
-          find ${{ env.OUT_DIR }}/arch/arm64/boot/dts -name "*.dtb" -exec cp {} artifacts/ \; 2>/dev/null || true
-          find ${{ env.OUT_DIR }}/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} artifacts/ \; 2>/dev/null || true
-          cp build.log artifacts/
-          cp ${{ env.OUT_DIR }}/.config artifacts/config 2>/dev/null || true
-          cd artifacts
-          tar -I zstd -cf ../pollux-kernel-${{ steps.version.outputs.POLLUX_TAG }}.tar.zst *
-          cd ..
-          ls -lh pollux-kernel-*.tar.zst
-
-      # ── Create GitHub Release ──────────────────────────────────────
+  # ── Create GitHub Release ──────────────────────────────────────────
+  create-release:
+    name: Create release
+    needs: [version, core-build, generate-changelog]
+    if: needs.core-build.outputs.status == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-build-${{ needs.version.outputs.tag }}
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog-${{ needs.version.outputs.tag }}
       - name: Create Release
-        if: steps.check.outputs.status == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.POLLUX_TAG }}
-          name: Pollux ${{ steps.version.outputs.POLLUX_VERSION }}
-          body_path: ${{ steps.changelog.outputs.path || '' }}
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: Pollux ${{ needs.version.outputs.version }}
+          body_path: changelog.md
           files: |
-            pollux-kernel-${{ steps.version.outputs.POLLUX_TAG }}.tar.zst
+            pollux-kernel-${{ needs.version.outputs.tag }}.tar.zst
             artifacts/Image.gz
           generate_release_notes: true
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Upload Artifacts ──────────────────────────────────────────
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
+  # ── Notify: Build Success ──────────────────────────────────────────
+  notify-success:
+    name: Notify success
+    needs: [version, core-build, generate-changelog]
+    if: needs.core-build.outputs.status == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download changelog
+        uses: actions/download-artifact@v4
         with:
-          name: pollux-kernel-${{ steps.version.outputs.POLLUX_TAG }}
-          path: |
-            artifacts/
-            build.log
-            changelog.md
-          retention-days: 7
-
-      # ── Notify: Build Success ─────────────────────────────────────
-      - name: Notify build success
-        if: steps.check.outputs.status == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+          name: changelog-${{ needs.version.outputs.tag }}
+      - name: Send Telegram success
         run: |
           bash .github/scripts/notify-telegram.sh \
             success \
-            "${{ steps.version.outputs.POLLUX_VERSION }}" \
-            "${{ steps.version.outputs.POLLUX_TAG }}" \
-            "${{ steps.changelog.outputs.path }}"
+            "${{ needs.version.outputs.version }}" \
+            "${{ needs.version.outputs.tag }}" \
+            "changelog.md"
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
 
-      # ── Notify: Build Failed ──────────────────────────────────────
-      - name: Notify build failed
-        if: failure() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+  # ── Notify: Build Failed ───────────────────────────────────────────
+  notify-failed:
+    name: Notify failure
+    needs: [version, core-build]
+    if: ${{ always() && (needs.core-build.result != 'success' || needs.core-build.outputs.status == 'failed') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download build artifacts (if available)
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-build-${{ needs.version.outputs.tag }}
+      - name: Send Telegram failure
         run: |
           bash .github/scripts/notify-telegram.sh \
             failed \
-            "${{ steps.version.outputs.POLLUX_VERSION }}" \
-            "${{ steps.version.outputs.POLLUX_TAG }}" \
+            "${{ needs.version.outputs.version }}" \
+            "${{ needs.version.outputs.tag }}" \
             "build.log"
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
