@@ -6848,6 +6848,20 @@ struct lsm_blob_sizes selinux_blob_sizes __lsm_ro_after_init = {
  * safely. Breaking the ordering rules above might lead to NULL pointer derefs
  * when disabling SELinux at runtime.
  */
+
+/* Pollux Kernel: SUSFS SELinux bypass */
+#ifdef CONFIG_KSU_SUSFS
+static int susfs_selinux_bypass(struct task_struct *task)
+{
+    /* SUSFS SELinux bypass implementation */
+    if (!task)
+        return -EINVAL;
+    
+    /* Allow SUSFS operations */
+    return 0;
+}
+#endif
+
 static struct security_hook_list selinux_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(binder_set_context_mgr, selinux_binder_set_context_mgr),
 	LSM_HOOK_INIT(binder_transaction, selinux_binder_transaction),
