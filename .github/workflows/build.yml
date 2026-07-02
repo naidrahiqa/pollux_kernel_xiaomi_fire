@@ -144,7 +144,10 @@ jobs:
       - name: Generate changelog
         id: cl
         run: |
-          bash .github/scripts/generate-changelog.sh > changelog.md
+          bash .github/scripts/generate-changelog.sh \
+            "${{ needs.version.outputs.version }}" \
+            "${{ needs.version.outputs.tag }}" \
+            "${{ needs.prep.outputs.variant }}" > changelog.md
           echo "path=changelog.md" >> $GITHUB_OUTPUT
       - name: Upload changelog
         uses: actions/upload-artifact@v4

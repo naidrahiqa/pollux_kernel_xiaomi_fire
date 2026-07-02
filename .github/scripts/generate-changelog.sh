@@ -1,47 +1,67 @@
 #!/bin/bash
 # Changelog Generator - Pollux Kernel
-# Generates changelog from git log between last tag and current HEAD
+# Generates formatted changelog for GitHub releases
 
 set -e
 
-echo "📝 Generating changelog..."
-echo ""
+VERSION="${1:-unknown}"
+TAG="${2:-$VERSION}"
+VARIANT="${3:-nightly}"
 
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 
-if [ -z "$LAST_TAG" ]; then
-    echo "## ✨ Initial Release" > /tmp/changelog.md
-    echo "" >> /tmp/changelog.md
-    echo "First build of Pollux Kernel." >> /tmp/changelog.md
-    echo "" >> /tmp/changelog.md
-    echo "### Commits" >> /tmp/changelog.md
-    git log --oneline --no-decorate -20 >> /tmp/changelog.md
-else
-    echo "## What's Changed" > /tmp/changelog.md
-    echo "" >> /tmp/changelog.md
-    echo "Changes since **${LAST_TAG}**:" >> /tmp/changelog.md
-    echo "" >> /tmp/changelog.md
+# Collect commits by type
+FEATURES=$(git log ${LAST_TAG:+$LAST_TAG..}HEAD --oneline --no-decorate --grep="feat" -i 2>/dev/null || echo "")
+FIXES=$(git log ${LAST_TAG:+$LAST_TAG..}HEAD --oneline --no-decorate --grep="fix" -i 2>/dev/null || echo "")
+SECURITY=$(git log ${LAST_TAG:+$LAST_TAG..}HEAD --oneline --no-decorate --grep="security\|CVE\|cip\|upstream" -i 2>/dev/null || echo "")
+UPDATES=$(git log ${LAST_TAG:+$LAST_TAG..}HEAD --oneline --no-decorate --grep="update\|bump\|upgrade\|merge\|refactor" -i 2>/dev/null || echo "")
+ALL_COMMITS=$(git log ${LAST_TAG:+$LAST_TAG..}HEAD --oneline --no-decorate 2>/dev/null || echo "")
 
-    # Group commits by type
-    echo "### 🚀 Features" >> /tmp/changelog.md
-    git log ${LAST_TAG}..HEAD --oneline --no-decorate --grep="feat" -i >> /tmp/changelog.md 2>/dev/null || echo "None" >> /tmp/changelog.md
-    echo "" >> /tmp/changelog.md
+# Build changelog
+cat << EOF
+## What's New in ${TAG}
 
-    echo "### 🐛 Bug Fixes" >> /tmp/changelog.md
-    git log ${LAST_TAG}..HEAD --oneline --no-decorate --grep="fix" -i >> /tmp/changelog.md 2>/dev/null || echo "None" >> /tmp/changelog.md
-    echo "" >> /tmp/changelog.md
+### Info
+- **Device:** Redmi 12 (fire) / MT6768
+- **Kernel:** ${POLLUX_BASE:-4.19.325-cip134}
+- **Toolchain:** Cyrene Clang 22.1.0
+- **Integration:** KernelSU-Next v3.2.0-legacy + SUSFS v2.2.0
+- **Variant:** ${VARIANT}
 
-    echo "### 🔒 Security" >> /tmp/changelog.md
-    git log ${LAST_TAG}..HEAD --oneline --no-decorate --grep="security\|CVE\|cip\|upstream" -i >> /tmp/changelog.md 2>/dev/null || echo "None" >> /tmp/changelog.md
-    echo "" >> /tmp/changelog.md
+EOF
 
-    echo "### 🔧 Updates" >> /tmp/changelog.md
-    git log ${LAST_TAG}..HEAD --oneline --no-decorate --grep="update\|bump\|upgrade\|merge" -i >> /tmp/changelog.md 2>/dev/null || echo "None" >> /tmp/changelog.md
-    echo "" >> /tmp/changelog.md
-
-    echo "### 📦 All Commits" >> /tmp/changelog.md
-    git log ${LAST_TAG}..HEAD --oneline --no-decorate >> /tmp/changelog.md 2>/dev/null || echo "None" >> /tmp/changelog.md
+if [ -n "$FEATURES" ]; then
+    echo "### 🚀 Features"
+    echo "$FEATURES"
+    echo ""
 fi
 
-echo "✅ Changelog generated."
-cat /tmp/changelog.md
+if [ -n "$FIXES" ]; then
+    echo "### 🐛 Bug Fixes"
+    echo "$FIXES"
+    echo ""
+fi
+
+if [ -n "$SECURITY" ]; then
+    echo "### 🔒 Security"
+    echo "$SECURITY"
+    echo ""
+fi
+
+if [ -n "$UPDATES" ]; then
+    echo "### 🔧 Updates"
+    echo "$UPDATES"
+    echo ""
+fi
+
+if [ -n "$ALL_COMMITS" ]; then
+    echo "### 📦 All Commits"
+    echo "$ALL_COMMITS"
+    echo ""
+fi
+
+if [ -z "$FEATURES" ] && [ -z "$FIXES" ] && [ -z "$SECURITY" ] && [ -z "$UPDATES" ] && [ -z "$ALL_COMMITS" ]; then
+    echo "### 📦 Changes"
+    echo "No commits since last release."
+    echo ""
+fi

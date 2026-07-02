@@ -23,18 +23,23 @@ Sets up GitHub Actions CI/CD for automated Pollux kernel builds.
 
 ## Version Management
 
-### Format: `PolluxXDDMMYY`
-- **X**: Build variant (0=nightly, 1=stable, 2=hotfix)
-- **DDMMYY**: Date tag (e.g., 020726 = 2 July 2026)
+### Format: Semver (`v{major}.{minor}.{patch}[-variant]`)
+
+| Variant | Format | Example | When |
+|---------|--------|---------|------|
+| **Nightly** | `v0.1.0-nightly.YYYYMMDD` | `v0.1.0-nightly.20260702` | Auto on push to main |
+| **Stable** | `v{major}.{minor}.{patch}` | `v1.0.0` | Manual dispatch, tested |
+| **Hotfix** | `v{major}.{minor}.{patch+1}` | `v1.0.1` | Manual dispatch, urgent fix |
 
 ### Source: `.github/scripts/version.sh`
 
 ```bash
 source .github/scripts/version.sh "${VARIANT:-0}"
 # Sets:
-#   POLLUX_VERSION=0020726
-#   POLLUX_TAG=Pollux0020726
-#   LOCALVERSION=-Pollux-0020726
+#   POLLUX_VERSION=v0.1.0-nightly.20260702
+#   POLLUX_TAG=v0.1.0-nightly.20260702
+#   POLLUX_VARIANT_NAME=nightly
+#   LOCALVERSION=-Pollux-v0.1.0-nightly.20260702
 ```
 
 ## Telegram Notifications
@@ -53,18 +58,20 @@ bash notify-telegram.sh failed <version> <tag> [error_log]
 **Build Start:**
 ```
 🔨 Pollux Kernel Build Started
-Version: Pollux0020726
+Device: Redmi 12 (fire) / MT6768
+Build: #19
+Tag: v0.1.0-nightly.20260702
 Commit: abc1234
-Message: Initial import
+Message: feat: add KSU support
 Run: GitHub Actions
 ⏳ Waiting...
 ```
 
 **Build Success:**
 ```
-✅ Pollux 0020726 Released!
+✅ Pollux v0.1.0-nightly.20260702 Released!
 Device: Redmi 12 (fire) / MT6768
-Tag: Pollux0020726
+Tag: v0.1.0-nightly.20260702
 Commit: abc1234def5678
 Release: Download link
 
@@ -83,10 +90,17 @@ Release: Download link
 
 **Build Failed:**
 ```
-❌ Pollux Kernel Build Failed
-Version: 0020726
-Commit: abc1234
-Error: (last 5 lines of build.log)
+📢 Pollux Kernel Info
+❌ Pollux Kernel Build #19 Failed
+
+Device: Redmi 12 (fire) / MT6768
+Tag: v0.1.0-nightly.20260702
+Error: MAKE ERROR
+Step: Build kernel (compile error)
+
+Error Context:
+(last 15 lines of build.log)
+
 View Build Log
 ```
 
@@ -187,11 +201,36 @@ Steps:
 
 ## Release Format
 
-### Tag: `PolluxXDDMMYY`
+### Tag: Semver (`v1.0.0-nightly.YYYYMMDD`)
 - Automated via `version.sh`
 - Created by `softprops/action-gh-release@v2`
-- Body: Generated changelog
+- Body: Generated changelog with device info, toolchain, commits
 - Assets: `pollux-kernel-<tag>.tar.zst` + `Image.gz` + DTB files
+
+### Changelog Format
+```markdown
+## What's New in v0.1.0-nightly.20260702
+
+### Info
+- **Device:** Redmi 12 (fire) / MT6768
+- **Kernel:** 4.19.325-cip134
+- **Toolchain:** Cyrene Clang 22.1.0
+- **Integration:** KernelSU-Next v3.2.0-legacy + SUSFS v2.2.0
+- **Variant:** nightly
+
+### 🚀 Features
+- abc1234 feat: add KSU support
+- def5678 feat: implement thermal management
+
+### 🐛 Bug Fixes
+- ghi9012 fix: memory leak in driver
+
+### 🔒 Security
+- jkl3456 security: update CIP to 134
+
+### 🔧 Updates
+- mno7890 update: bump toolchain version
+```
 
 ## Best Practices
 1. Set both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL_ID` before push
@@ -205,9 +244,10 @@ Steps:
 |----------|---------|-------------|
 | `TELEGRAM_BOT_TOKEN` | (secret) | Bot token for Telegram |
 | `TELEGRAM_CHANNEL_ID` | (secret) | Channel ID for Telegram |
-| Variant | `0 — Nightly` | Build variant |
+| `TELEGRAM_ERROR_CHANNEL_ID` | (secret) | Error channel ID for Telegram |
+| Variant | `0 — Nightly` | Build variant (0=nightly, 1=stable, 2=hotfix) |
 | Defconfig | `fire_defconfig` | Target defconfig |
-| LTO | `thin` | LTO mode |
+| LTO | `none` | LTO mode (none/thin/full) |
 
 ## Troubleshooting
 
@@ -215,3 +255,5 @@ Steps:
 - **Wrong channel ID**: Run getUpdates with curl to verify
 - **Release duplicate**: Delete tag locally + remote, re-run
 - **Changelog empty**: No commits since last tag — first release
+- **Build OOM/broken pipe**: Use `LTO=none` and `-j4`
+- **Release 403 error**: Add `permissions: contents: write` to job
