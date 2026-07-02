@@ -132,7 +132,7 @@ jobs:
       # ── Configure Kernel ──────────────────────────────────────────
       - name: Configure kernel
         run: |
-          make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} CC=clang HOSTCC=gcc ${{ env.DEFCONFIG }}
+          make O=${{ env.OUT_DIR }} ARCH=${{ env.ARCH }} CC=gcc HOSTCC=gcc ${{ env.DEFCONFIG }}
 
       # ── Build Kernel ──────────────────────────────────────────────
       - name: Build kernel
