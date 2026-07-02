@@ -12,6 +12,10 @@ name: Build Pollux Kernel
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.opencode/**'
+      - '.github/scripts/**'
   workflow_dispatch:
     inputs:
       variant:
