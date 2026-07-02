@@ -59,7 +59,7 @@ jobs:
             python3 python3-pip \
             patch p7zip-full wiggle \
             libc++-dev libc++abi-dev lld \
-            clang
+            clang llvm
 
       # ── Setup cyrene_clang ────────────────────────────────────────
       # Do NOT add to PATH — use system clang for CC (works with Kconfig shell calls)
