@@ -105,7 +105,7 @@ jobs:
         id: build
         continue-on-error: true
         run: |
-          make -j$(nproc) \
+          make -j4 \
             O=${{ env.OUT_DIR }} \
             ARCH=${{ env.ARCH }} \
             CC=clang \
