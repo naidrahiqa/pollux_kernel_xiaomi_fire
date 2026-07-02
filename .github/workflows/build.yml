@@ -97,7 +97,8 @@ jobs:
             bc bison build-essential cpio flex \
             libssl-dev libelf-dev zstd \
             python3 python3-pip \
-            patch p7zip-full wiggle
+            patch p7zip-full wiggle \
+            libc++-dev libc++abi-dev lld
 
       # ── Setup cyrene_clang ────────────────────────────────────────
       - name: Setup cyrene_clang
