@@ -125,10 +125,21 @@ jobs:
         id: final-check
         if: always()
         run: |
-          if [ -f ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz ]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
+          set -eo pipefail
+          HAS_ERROR=0
+          if grep -qi "LLVM ERROR" build.log 2>/dev/null; then
+            echo "::error::LLVM ERROR found in build log"
+            grep -i "LLVM ERROR" build.log | head -5
+            HAS_ERROR=1
+          fi
+          if [ ! -f ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz ]; then
+            echo "::error::Image.gz not found"
+            HAS_ERROR=1
+          fi
+          if [ "$HAS_ERROR" -eq 1 ]; then
             echo "status=failed" >> $GITHUB_OUTPUT
+          else
+            echo "status=success" >> $GITHUB_OUTPUT
           fi
 
       # ── Package Artifacts ─────────────────────────────────────────
