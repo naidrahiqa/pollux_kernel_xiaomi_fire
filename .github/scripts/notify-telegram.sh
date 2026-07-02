@@ -85,6 +85,11 @@ function build_success() {
 <b>Commit:</b> <code>${SHA}</code>
 <b>Release:</b> <a href='${REPO_URL}/releases/tag/${TAG}'>Download</a>
 
+<b>📦 Downloads</b>
+• Flashable zip (AnyKernel3) — via custom recovery
+• Image.gz — manual flash via fastboot
+• tar.zst — source/build archive
+
 <b>🛠 Toolchains</b>
 • <a href='${CLANG_URL}'>Cyrene Clang</a>: ${CLANG_VERSION}
 

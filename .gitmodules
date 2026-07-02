@@ -2,3 +2,7 @@
 	path = KernelSU
 	url = https://github.com/naidrahiqa/KernelSU-Next.git
 	branch = legacy
+[submodule "AnyKernel3"]
+	path = AnyKernel3
+	url = https://github.com/naidrahiqa/AnyKernel3.git
+	branch = master
