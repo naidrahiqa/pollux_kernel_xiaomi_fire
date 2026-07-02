@@ -54,9 +54,25 @@ env:
   LTO: ${{ inputs.lto || 'thin' }}
 
 jobs:
+  # ── Prep: expose env vars as job outputs (env is not usable in uses.with) ─
+  prep:
+    name: Prepare build params
+    runs-on: ubuntu-24.04
+    outputs:
+      variant: ${{ steps.p.outputs.variant }}
+      defconfig: ${{ steps.p.outputs.defconfig }}
+      lto: ${{ steps.p.outputs.lto }}
+    steps:
+      - id: p
+        run: |
+          echo "variant=${POLLUX_VARIANT}" >> $GITHUB_OUTPUT
+          echo "defconfig=${DEFCONFIG}" >> $GITHUB_OUTPUT
+          echo "lto=${LTO}" >> $GITHUB_OUTPUT
+
   # ── Version ────────────────────────────────────────────────────────
   version:
     name: Generate version
+    needs: [prep]
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.v.outputs.POLLUX_VERSION }}
@@ -66,7 +82,7 @@ jobs:
       - name: Generate version
         id: v
         run: |
-          source .github/scripts/version.sh "${POLLUX_VARIANT}"
+          source .github/scripts/version.sh "${{ needs.prep.outputs.variant }}"
           echo "POLLUX_VERSION=${POLLUX_VERSION}" >> $GITHUB_OUTPUT
           echo "POLLUX_TAG=${POLLUX_TAG}" >> $GITHUB_OUTPUT
 
@@ -78,7 +94,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Send Telegram start
-        if: github.event_name != 'pull_request'
         run: |
           bash .github/scripts/notify-telegram.sh \
             start \
@@ -91,11 +106,11 @@ jobs:
   # ── Core Build ─────────────────────────────────────────────────────
   core-build:
     name: Build kernel
-    needs: [version]
+    needs: [prep, version]
     uses: ./.github/workflows/build-core.yml
     with:
-      defconfig: ${{ env.DEFCONFIG }}
-      lto: ${{ env.LTO }}
+      defconfig: ${{ needs.prep.outputs.defconfig }}
+      lto: ${{ needs.prep.outputs.lto }}
       kernel_version: ${{ needs.version.outputs.version }}
       kernel_tag: ${{ needs.version.outputs.tag }}
 
@@ -178,7 +193,7 @@ jobs:
   # ── Notify: Build Failed ───────────────────────────────────────────
   notify-failed:
     name: Notify failure
-    needs: [version, core-build]
+    needs: [prep, version, core-build]
     if: ${{ always() && (needs.core-build.result != 'success' || needs.core-build.outputs.status == 'failed') }}
     runs-on: ubuntu-24.04
     steps:
