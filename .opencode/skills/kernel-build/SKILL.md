@@ -108,6 +108,16 @@ find out/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} out/ \;
 
 # Module tree (optional)
 make O=out ARCH=arm64 modules_install INSTALL_MOD_PATH=out/modules
+
+# AnyKernel3 flashable zip
+cp out/Image.gz AnyKernel3/
+cp anykernel.sh AnyKernel3/anykernel.sh
+cd AnyKernel3
+zip -r9 ../pollux-<tag>-flashable.zip . -x '*.git*'
+cd ..
+
+# Archive
+cd out && tar -I zstd -cf ../pollux-<tag>.tar.zst * && cd ..
 ```
 
 ### 5. Verify
@@ -140,6 +150,8 @@ For GitHub Actions, use `ubuntu-22.04` or `ubuntu-24.04` runner:
 ```yaml
 - name: Checkout
   uses: actions/checkout@v4
+  with:
+    submodules: 'recursive'
 
 - name: Setup cyrene_clang
   run: |
@@ -150,6 +162,12 @@ For GitHub Actions, use `ubuntu-22.04` or `ubuntu-24.04` runner:
   run: |
     make O=out ARCH=arm64 fire_defconfig
     make -j$(nproc) O=out ARCH=arm64 CC=clang ...
+
+- name: Create flashable zip
+  run: |
+    cp out/Image.gz AnyKernel3/
+    cp anykernel.sh AnyKernel3/anykernel.sh
+    cd AnyKernel3 && zip -r9 ../pollux-<tag>-flashable.zip . -x '*.git*'
 ```
 
 ## Troubleshooting

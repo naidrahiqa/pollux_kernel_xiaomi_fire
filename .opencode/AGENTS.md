@@ -729,6 +729,7 @@ opencode-agent run kernel-patch --path . --force-reapply
 | **Clang toolchain** | `naidrahiqa/cyrene_clang` | Latest release (LLVM 22.1.0) |
 | **KernelSU-Next** | `KernelSU-Next/KernelSU-Next` | `legacy` branch |
 | **SUSFS backport** | `naidrahiqa/susf4ksu-legacy` | `master` (v2.2.0 backport) |
+| **AnyKernel3** | `naidrahiqa/AnyKernel3` | `master` (flashable zip creator) |
 | **Output repo** | `naidrahiqa/pollux_kernel_xiaomi_fire` | `main` |
 
 Device: **Xiaomi Fire (Redmi 12)** — MT6768 / Helio G88

@@ -19,6 +19,8 @@ Sets up GitHub Actions CI/CD for automated Pollux kernel builds.
 │   ├── version.sh         ← Version management (PolluxXDDMMYY)
 │   ├── generate-changelog.sh  ← Changelog from git log
 │   └── notify-telegram.sh ← Telegram notifications
+AnyKernel3/                ← Submodule: AnyKernel3 flashable zip creator
+anykernel.sh               ← Custom anykernel.sh for Redmi 12 (fire)
 ```
 
 ## Version Management
@@ -205,7 +207,37 @@ Steps:
 - Automated via `version.sh`
 - Created by `softprops/action-gh-release@v2`
 - Body: Generated changelog with device info, toolchain, commits
-- Assets: `pollux-kernel-<tag>.tar.zst` + `Image.gz` + DTB files
+- Assets:
+  - `pollux-kernel-<tag>.tar.zst` — Raw build artifacts (Image.gz + dtb + config)
+  - `pollux-<tag>-flashable.zip` — AnyKernel3 flashable zip (via custom recovery/KernelFlasher)
+  - `Image.gz` — Manual fastboot flash
+
+### AnyKernel3 Integration
+
+**Submodule:** `AnyKernel3/` → `naidrahiqa/AnyKernel3` (master branch)
+
+**Custom anykernel.sh:**
+```bash
+# shell variables
+block=/dev/block/by-name/boot;
+is_slot_device=1;           # A/B slot (Redmi 12 4G)
+ramdisk_compression=auto;
+patch_vbmeta_flag=auto;
+
+# Boot install — kernel only, no ramdisk mods
+split_boot;
+flash_boot;
+```
+
+**Build process:**
+1. Copy `Image.gz` to `AnyKernel3/`
+2. Copy custom `anykernel.sh` to `AnyKernel3/`
+3. Create zip: `cd AnyKernel3 && zip -r9 ../pollux-<tag>-flashable.zip . -x '*.git*'`
+
+**Flash methods:**
+- Custom Recovery (TWRP/OrangeFox) → Install zip
+- KernelFlasher app → Select zip → Flash
+- Fastboot: `fastboot flash boot Image.gz`
 
 ### Changelog Format
 ```markdown
