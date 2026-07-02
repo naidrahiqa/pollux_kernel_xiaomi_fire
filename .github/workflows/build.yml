@@ -114,6 +114,21 @@ jobs:
       kernel_version: ${{ needs.version.outputs.version }}
       kernel_tag: ${{ needs.version.outputs.tag }}
 
+  # ── Check build result ──────────────────────────────────────────────
+  check-build:
+    name: Check build result
+    needs: [core-build]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if build failed
+        run: |
+          if [ "${{ needs.core-build.outputs.status }}" != "success" ]; then
+            echo "❌ Kernel build failed — workflow will fail"
+            exit 1
+          fi
+          echo "✅ Kernel build succeeded"
+
   # ── Generate Changelog ─────────────────────────────────────────────
   generate-changelog:
     name: Generate changelog
