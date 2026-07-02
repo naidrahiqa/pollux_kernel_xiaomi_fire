@@ -41,17 +41,17 @@ on:
       lto:
         description: 'LTO mode'
         required: true
-        default: 'thin'
+        default: 'none'
         type: choice
         options:
+          - none
           - thin
           - full
-          - none
 
 env:
   POLLUX_VARIANT: ${{ inputs.variant || '0' }}
   DEFCONFIG: ${{ inputs.defconfig || 'fire_defconfig' }}
-  LTO: ${{ inputs.lto || 'thin' }}
+  LTO: ${{ inputs.lto || 'none' }}
 
 jobs:
   # ── Prep: expose env vars as job outputs (env is not usable in uses.with) ─
