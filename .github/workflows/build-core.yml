@@ -109,13 +109,13 @@ jobs:
             O=${{ env.OUT_DIR }} \
             ARCH=${{ env.ARCH }} \
             CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            STRIP=llvm-strip \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
             HOSTCC=gcc \
-            LD=$CLANG_DIR/ld.lld \
-            AR=$CLANG_DIR/llvm-ar \
-            NM=$CLANG_DIR/llvm-nm \
-            STRIP=$CLANG_DIR/llvm-strip \
-            OBJCOPY=$CLANG_DIR/llvm-objcopy \
-            OBJDUMP=$CLANG_DIR/llvm-objdump \
             LTO=${{ inputs.lto }} \
             2>&1 | tee build.log
 
