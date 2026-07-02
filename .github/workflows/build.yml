@@ -1,9 +1,10 @@
 # =============================================================================
-# Pollux Kernel CI/CD — Build, Notify & Release
+# Pollux Kernel CI/CD — Patch + Build + Notify + Release
 # =============================================================================
 # Secrets required (Settings → Secrets and variables → Actions):
-#   TELEGRAM_BOT_TOKEN    - Bot token from @BotFather
-#   TELEGRAM_CHANNEL_ID   - Channel/chat ID (e.g., -1001234567890)
+#   TELEGRAM_BOT_TOKEN        - Bot token from @BotFather
+#   TELEGRAM_CHANNEL_ID       - Success channel ID
+#   TELEGRAM_ERROR_CHANNEL_ID - Error channel ID
 # =============================================================================
 
 name: Build Pollux Kernel
@@ -11,16 +12,6 @@ name: Build Pollux Kernel
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '.opencode/**'
-      - '.github/scripts/**'
-      - '.github/workflows/notify-telegram.yml'
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '.opencode/**'
   workflow_dispatch:
     inputs:
       variant:
@@ -52,42 +43,25 @@ on:
           - none
 
 env:
-  # Version
   POLLUX_VARIANT: ${{ inputs.variant || '0' }}
-  POLLUX_DATE: ${{ github.event_name == 'workflow_dispatch' && '' || format('{0}{1}{2}', github.run_number, github.run_attempt, github.sha) }}
-
-  # Build
   DEFCONFIG: ${{ inputs.defconfig || 'fire_defconfig' }}
   ARCH: arm64
   LTO: ${{ inputs.lto || 'thin' }}
   OUT_DIR: out
-
-  # Clang
   CLANG_REPO: https://github.com/naidrahiqa/cyrene_clang
-  CLANG_VERSION: Cyrene Clang 22.1.0
-
-  # KernelSU
-  KERNELSU_REPO: https://github.com/KernelSU-Next/KernelSU-Next.git
   KERNELSU_BRANCH: legacy
-
-  # SUSFS
   SUSFS_REPO: https://github.com/naidrahiqa/susf4ksu-legacy.git
 
 jobs:
   build:
     name: Build Pollux Kernel
     runs-on: ubuntu-24.04
-    outputs:
-      version: ${{ steps.version.outputs.POLLUX_VERSION }}
-      tag: ${{ steps.version.outputs.POLLUX_TAG }}
-      variant: ${{ steps.version.outputs.POLLUX_VARIANT }}
 
     steps:
       # ── Checkout ──────────────────────────────────────────────────
       - name: Checkout source
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           submodules: 'recursive'
 
       # ── Version ────────────────────────────────────────────────────
@@ -119,7 +93,7 @@ jobs:
             bc bison build-essential cpio flex \
             libssl-dev libelf-dev zstd \
             python3 python3-pip \
-            ccache
+            patch p7zip-full wiggle
 
       # ── Setup cyrene_clang ────────────────────────────────────────
       - name: Setup cyrene_clang
@@ -127,6 +101,28 @@ jobs:
           bash <(wget -qO- https://raw.githubusercontent.com/naidrahiqa/cyrene_clang/main/get_clang.sh)
           echo "$HOME/toolchains/cyrene/bin" >> $GITHUB_PATH
           clang --version
+
+      # ── Apply KernelSU-Next + SUSFS Patches ──────────────────────
+      - name: Clone SUSFS backport
+        run: |
+          git clone --depth=1 ${SUSFS_REPO} ../susf4ksu-legacy
+
+      - name: Apply SUSFS patches
+        run: |
+          bash ../susf4ksu-legacy/core-scripts/apply.sh \
+            . \
+            --kernelsu-next \
+            --mtk
+
+      - name: Check for rejected patches
+        run: |
+          REJ_COUNT=$(find . -name "*.rej" 2>/dev/null | wc -l)
+          if [ "$REJ_COUNT" -gt 0 ]; then
+            echo "::error::Found $REJ_COUNT .rej files — patch failed"
+            find . -name "*.rej" -exec cat {} \;
+            exit 1
+          fi
+          echo "All patches applied cleanly"
 
       # ── Configure Kernel ──────────────────────────────────────────
       - name: Configure kernel
@@ -177,15 +173,11 @@ jobs:
         if: steps.check.outputs.status == 'success'
         run: |
           mkdir -p artifacts
-          # Kernel image
           cp ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz artifacts/ 2>/dev/null || true
-          # Device tree blobs
           find ${{ env.OUT_DIR }}/arch/arm64/boot/dts -name "*.dtb" -exec cp {} artifacts/ \; 2>/dev/null || true
           find ${{ env.OUT_DIR }}/arch/arm64/boot/dts -name "*.dtbo" -exec cp {} artifacts/ \; 2>/dev/null || true
-          # Build artifacts
           cp build.log artifacts/
           cp ${{ env.OUT_DIR }}/.config artifacts/config 2>/dev/null || true
-          # Compress
           cd artifacts
           tar -I zstd -cf ../pollux-kernel-${{ steps.version.outputs.POLLUX_TAG }}.tar.zst *
           cd ..
@@ -243,5 +235,4 @@ jobs:
             "build.log"
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           TELEGRAM_ERROR_CHANNEL_ID: ${{ secrets.TELEGRAM_ERROR_CHANNEL_ID }}
