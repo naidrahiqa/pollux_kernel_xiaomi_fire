@@ -17,8 +17,18 @@ BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
 CHANNEL_ID="${TELEGRAM_CHANNEL_ID:-}"
 ERROR_CHANNEL_ID="${TELEGRAM_ERROR_CHANNEL_ID:-}"
 
-if [ -z "$BOT_TOKEN" ] || [ -z "$CHANNEL_ID" ]; then
-    echo "⚠️  TELEGRAM_BOT_TOKEN or TELEGRAM_CHANNEL_ID not set. Skipping."
+if [ -z "$BOT_TOKEN" ]; then
+    echo "⚠️  TELEGRAM_BOT_TOKEN not set. Skipping."
+    exit 0
+fi
+
+if [ "$STATUS" != "failed" ] && [ -z "$CHANNEL_ID" ]; then
+    echo "⚠️  TELEGRAM_CHANNEL_ID not set. Skipping."
+    exit 0
+fi
+
+if [ "$STATUS" == "failed" ] && [ -z "$ERROR_CHANNEL_ID" ] && [ -z "$CHANNEL_ID" ]; then
+    echo "⚠️  Neither TELEGRAM_ERROR_CHANNEL_ID nor TELEGRAM_CHANNEL_ID set. Skipping."
     exit 0
 fi
 
