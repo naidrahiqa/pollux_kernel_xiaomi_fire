@@ -1911,6 +1911,11 @@ int do_execve_file(struct file *file, void *__argv, void *__envp)
 	return __do_execve_file(AT_FDCWD, NULL, argv, envp, 0, file);
 }
 
+#ifdef CONFIG_KSU_MANUAL_HOOK
+extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
+				void *argv, void *envp, int *flags);
+#endif
+
 int do_execve(struct filename *filename,
 	const char __user *const __user *__argv,
 	const char __user *const __user *__envp)
@@ -1922,12 +1927,6 @@ int do_execve(struct filename *filename,
 #endif
 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
 }
-
-#ifdef CONFIG_KSU_MANUAL_HOOK
-__attribute__((hot))
-extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
-				void *argv, void *envp, int *flags);
-#endif
 
 int do_execveat(int fd, struct filename *filename,
 		const char __user *const __user *__argv,
