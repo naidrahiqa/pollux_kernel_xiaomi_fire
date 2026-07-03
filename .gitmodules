@@ -1,5 +1,5 @@
-[submodule "KernelSU"]
-	path = KernelSU
+[submodule "resukisu"]
+	path = resukisu
 	url = https://github.com/ReSukiSU/ReSukiSU.git
 	branch = main
 [submodule "AnyKernel3"]
