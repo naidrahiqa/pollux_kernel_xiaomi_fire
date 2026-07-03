@@ -44,27 +44,12 @@ Create/update Pollux defconfig:
 # Copy existing MT6768 defconfig as base
 cp arch/arm64/configs/mt6768_defconfig arch/arm64/configs/fire_defconfig
 
-# Or merge with SUSFS/KSU configs
+# Or merge with ReSukiSU configs
 cat <<EOF >> arch/arm64/configs/fire_defconfig
-# KernelSU-Next
+# ReSukiSU
 CONFIG_KSU=y
-CONFIG_KSU_SUSFS=y
-
-# SUSFS features
-CONFIG_KSU_SUSFS_SUS_PATH=y
-CONFIG_KSU_SUSFS_SUS_MOUNT=y
-CONFIG_KSU_SUSFS_SUS_KSTAT=y
-CONFIG_KSU_SUSFS_SUS_MAP=y
-CONFIG_KSU_SUSFS_SUS_SU=y
-CONFIG_KSU_SUSFS_SPOOF_UNAME=y
-CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
-CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y
-CONFIG_KSU_SUSFS_TRY_UMOUNT=y
-CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
-CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
-CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-CONFIG_KSU_SUSFS_ENABLE_LOG=n
+CONFIG_KSU_MANUAL_HOOK=y
+CONFIG_KSU_MULTI_MANAGER_SUPPORT=y
 
 # Pollux
 CONFIG_LOCALVERSION="-Pollux"
@@ -126,8 +111,8 @@ cd out && tar -I zstd -cf ../pollux-<tag>.tar.zst * && cd ..
 # Check kernel version
 strings out/arch/arm64/boot/Image.gz | grep "Pollux"
 
-# Check SUSFS symbols (if built-in)
-strings out/vmlinux | grep susfs
+# Check KernelSU symbols
+strings out/vmlinux | grep kernelsu
 
 # Check size
 ls -lh out/Image.gz

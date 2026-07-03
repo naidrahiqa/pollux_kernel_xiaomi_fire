@@ -1,91 +1,64 @@
 ---
 name: kernel-patch
-description: Use ONLY for applying KernelSU-Next (legacy branch) as submodule and applying SUSFS patches via susf4ksu-legacy/apply.sh --kernelsu-next --mtk. NOT for initial repo setup or building.
+description: Use ONLY for adding ReSukiSU as submodule to the Pollux kernel. NOT for initial repo setup or building.
 ---
 
 # Skill: kernel-patch
 
-Applies KernelSU-Next and SUSFS to the Pollux kernel source.
+Integrates ReSukiSU (Resurrection KernelSU) into the Pollux kernel source.
 
 ## Prerequisites
 
 - Kernel source must already be initialized (run kernel-init first)
 - Working directory must be the kernel root
-- `patch`, `python3`, `findutils`, `sed` must be available
+- Internet connection for cloning submodule
 
 ## Steps
 
-### 1. Add KernelSU-Next as Submodule
+### 1. Add ReSukiSU as Submodule
 
 ```bash
-git submodule add -b legacy https://github.com/KernelSU-Next/KernelSU-Next.git kernel/
+git submodule add -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
 ```
 
 Verify structure:
 ```
-kernel/
+KernelSU/
 ├── kernel/          # KSU kernel module source
 ├── uapi/            # KSU userspace API headers
 └── ...
 ```
 
-### 2. Integrate KernelSU-Next into Build
+### 2. Configure Defconfig
 
-Add to `kernel/Makefile` include at the end of the main kernel Makefile, or add objects to the relevant Kconfig/Kbuild:
-
-For 4.19 kernels, add to the top-level `Makefile`:
-```makefile
-# KernelSU-Next
-ifneq ($(wildcard $(srctree)/kernel),)
--include kernel/Makefile
-endif
+Add to `arch/arm64/configs/fire_defconfig`:
 ```
-
-Or integrate via `arch/arm64/configs/fire_defconfig`:
-```
+# ReSukiSU
 CONFIG_KSU=y
-CONFIG_KSU_SUSFS=y
+CONFIG_KSU_MANUAL_HOOK=y
+CONFIG_KSU_MULTI_MANAGER_SUPPORT=y
 ```
 
-### 3. Clone susf4ksu-legacy
+Note:
+- `CONFIG_KSU_MANUAL_HOOK=y`: Required for non-GKI kernels (< 5.10)
+- `CONFIG_KSU_MULTI_MANAGER_SUPPORT=y`: Support KernelSU/MKSU/RKSU/SukiSU managers
+
+### 3. Verify
 
 ```bash
-git clone --depth=1 https://github.com/naidrahiqa/susf4ksu-legacy.git ../susf4ksu-legacy
+test -f KernelSU/kernel/Kconfig && echo "OK"
+grep -q CONFIG_KSU=y arch/arm64/configs/fire_defconfig && echo "Defconfig OK"
 ```
 
-### 4. Apply SUSFS Patches
-
-```bash
-bash ../susf4ksu-legacy/core-scripts/apply.sh . --kernelsu-next --mtk
-```
-
-Flags:
-- `--kernelsu-next` : Use KernelSU-Next dispatch (sys_reboot-based, not prctl)
-- `--mtk` : Apply MediaTek platform fixups (MTK include paths, KABI compat)
-
-The script is idempotent — safe to re-run.
-
-### 5. Verify
-
-```bash
-bash ../susf4ksu-legacy/core-scripts/verify.sh . fire_defconfig
-```
-
-Checks:
-- `fs/susfs.c` exists
-- `include/linux/susfs.h` exists
-- No stale `susfs_def.h` includes in kernel/ source
-- No `.rej` files
-- Defconfig SUSFS options present
-
-### 6. Commit
+### 4. Commit
 
 ```bash
 git add -A
-git commit -m "Pollux: Integrate KernelSU-Next + SUSFS
+git commit -m "Pollux: Integrate ReSukiSU
 
-KernelSU-Next: legacy branch
-SUSFS: simonpunk/susfs4ksu v2.2.0 backport
+ReSukiSU: main branch (Resurrection KernelSU)
+Manual hook mode for non-GKI 4.19 kernel
+Multi-manager support enabled
 "
 ```
 
@@ -93,12 +66,11 @@ SUSFS: simonpunk/susfs4ksu v2.2.0 backport
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SUSFS_REPO` | `naidrahiqa/susf4ksu-legacy` | SUSFS backport repo |
-| `KERNELSU_BRANCH` | `legacy` | KernelSU-Next branch |
-| `SUSFS_FLAGS` | `--kernelsu-next --mtk` | Flags for apply.sh |
+| `RESUKISU_REPO` | `ReSukiSU/ReSukiSU` | ReSukiSU repository |
+| `RESUKISU_BRANCH` | `main` | ReSukiSU branch |
 
 ## Troubleshooting
 
-- **Patch rejects (.rej files)**: Run `wiggle` fallback or manually resolve
-- **Missing syscall**: For 4.19, `get_cred_rcu` / `path_umount` may need backport — check `kernel/KernelSU-Next/007-susfs-for-kernelsu-next.patch`
-- **MTK header errors**: Re-run with `--mtk` flag
+- **Submodule clone fails**: Check internet/GitHub access. Try `git submodule add --depth=1`
+- **Kconfig not found**: Verify `KernelSU/kernel/Kconfig` exists after clone
+- **Manual hook compile errors**: Check ReSukiSU docs at https://resukisu.github.io/guide/manual-integrate.html

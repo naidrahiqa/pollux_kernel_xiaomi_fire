@@ -32,7 +32,6 @@ env:
   ARCH: arm64
   OUT_DIR: out
   CLANG_REPO: https://github.com/naidrahiqa/cyrene_clang
-  SUSFS_REPO: https://github.com/naidrahiqa/susf4ksu-legacy.git
 
 jobs:
   build:
@@ -69,28 +68,6 @@ jobs:
           bash <(wget -qO- https://raw.githubusercontent.com/naidrahiqa/cyrene_clang/main/get_clang.sh)
           echo "CLANG_DIR=$HOME/toolchains/cyrene/bin" >> $GITHUB_ENV
           /usr/bin/clang --version
-
-      # ── Apply KernelSU-Next + SUSFS Patches ──────────────────────
-      - name: Clone SUSFS backport
-        run: |
-          git clone --depth=1 ${SUSFS_REPO} ../susf4ksu-legacy
-
-      - name: Apply SUSFS patches
-        run: |
-          bash ../susf4ksu-legacy/core-scripts/apply.sh \
-            . \
-            --kernelsu-next \
-            --mtk
-
-      - name: Check for rejected patches
-        run: |
-          REJ_COUNT=$(find . -name "*.rej" 2>/dev/null | wc -l)
-          if [ "$REJ_COUNT" -gt 0 ]; then
-            echo "::error::Found $REJ_COUNT .rej files — patch failed"
-            find . -name "*.rej" -exec cat {} \;
-            exit 1
-          fi
-          echo "All patches applied cleanly"
 
       # ── Configure Kernel ──────────────────────────────────────────
       - name: Configure kernel

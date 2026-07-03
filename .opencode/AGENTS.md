@@ -36,21 +36,20 @@
 ### Skill: Kernel Patcher
 - **ID**: `kernel-patch`
 - **File**: `skills/kernel-patch/SKILL.md`
-- **Responsibility**: Integrate KernelSU-Next + apply SUSFS backport patches
-- **Triggers**: `add_ksu`, `apply_susfs`, `patch_kernel`, `manual_request`
+- **Responsibility**: Integrate ReSukiSU as git submodule
+- **Triggers**: `add_ksu`, `patch_kernel`, `manual_request`
 - **Input Type**: `directory` (kernel source)
 - **Output Type**: `git-commit`, `markdown` (verification report)
 - **Dependencies**: `kernel-init` (source must exist)
-- **Estimated Runtime**: ~120-300 seconds
-- **Severity Levels**: `critical` (patch gagal), `high` (conflict warning)
+- **Estimated Runtime**: ~30-60 seconds
+- **Severity Levels**: `high` (submodule error)
 - **Owner Role**: Kernel Patcher
 
 **Details**:
-- Adds KernelSU-Next (`legacy` branch) via git submodule ke `kernel/`
-- Clones `naidrahiqa/susf4ksu-legacy` untuk patch files
-- Runs `core-scripts/apply.sh --kernelsu-next --mtk` (idempotent)
-- Verifies: `fs/susfs.c`, `include/linux/susfs.h`, no `.rej` files
-- Fixup: MTK KABI compat, namespace hooks, selinux placement
+- Adds ReSukiSU (`main` branch) via git submodule ke `KernelSU/`
+- Manual hook mode untuk non-GKI 4.19 kernel
+- Multi-manager support
+- No SUSFS — removed for stability
 
 ---
 
@@ -68,7 +67,7 @@
 
 **Details**:
 - Downloads cyrene_clang dari release terbaru (LLVM 22.1.0+)
-- Config: `fire_defconfig` (copy dari mt6768_defconfig + SUSFS options)
+- Config: `fire_defconfig` (copy dari mt6768_defconfig + ReSukiSU options)
 - Build flags: `CC=clang`, `LD=ld.lld`, `AR=llvm-ar`, etc.
 - LTO modes: `thin` (default), `full`, `none`
 - Output: `Image.gz`, `*.dtb`, `*.dtbo`, `build.log`
@@ -253,7 +252,7 @@ triggers:
     - skills: [kernel-patch]
       parallel: false
       on_failure: halt
-    - description: "Tambah KernelSU-Next submodule + SUSFS"
+    - description: "Tambah ReSukiSU submodule"
 
   "build_kernel":
     - skills: [kernel-build]
@@ -282,7 +281,7 @@ triggers:
 | File changed in `.github/workflows/` | `kernel-ci` | CI config changed, validate/update |
 | User mentions "clang", "compiler", "toolchain" | `kernel-build` | Build-related context |
 | User mentions "cip", "upstream", "rebase" | `kernel-init` | Upstream update context |
-| User mentions "kernelsu", "susfs", "patch" | `kernel-patch` | Patching context |
+| User mentions "kernelsu", "resukisu", "patch" | `kernel-patch` | Patching context |
 | User mentions "workflow", "github actions", "ci" | `kernel-ci` | CI/CD context |
 | Empty directory / no `.git` | `kernel-init` (forced) | Fresh repo detected |
 
@@ -480,11 +479,9 @@ skills:
     timeout_seconds: 300
 
   kernel-patch:
-    susfs_repo: "https://github.com/naidrahiqa/susf4ksu-legacy"
-    kernelsu_repo: "https://github.com/KernelSU-Next/KernelSU-Next.git"
-    kernelsu_branch: "legacy"
-    apply_flags: "--kernelsu-next --mtk"
-    timeout_seconds: 300
+    resukisu_repo: "https://github.com/ReSukiSU/ReSukiSU.git"
+    resukisu_branch: "main"
+    timeout_seconds: 60
 
   kernel-build:
     defconfig: "fire_defconfig"
@@ -727,8 +724,7 @@ opencode-agent run kernel-patch --path . --force-reapply
 | **Base kernel** | `mt6768-dev/android_kernel_xiaomi_fire` | `lineage-23.2` (v4.19.325-cip124) |
 | **Upstream CIP** | `git.kernel.org/pub/scm/linux/kernel/git/cip/linux-cip.git` | `v4.19.325-cip134` |
 | **Clang toolchain** | `naidrahiqa/cyrene_clang` | Latest release (LLVM 22.1.0) |
-| **KernelSU-Next** | `KernelSU-Next/KernelSU-Next` | `legacy` branch |
-| **SUSFS backport** | `naidrahiqa/susf4ksu-legacy` | `master` (v2.2.0 backport) |
+| **ReSukiSU** | `ReSukiSU/ReSukiSU` | `main` branch |
 | **AnyKernel3** | `naidrahiqa/AnyKernel3` | `master` (flashable zip creator) |
 | **Output repo** | `naidrahiqa/pollux_kernel_xiaomi_fire` | `main` |
 

@@ -1,7 +1,7 @@
 [submodule "KernelSU"]
 	path = KernelSU
-	url = https://github.com/naidrahiqa/KernelSU-Next.git
-	branch = legacy
+	url = https://github.com/ReSukiSU/ReSukiSU.git
+	branch = main
 [submodule "AnyKernel3"]
 	path = AnyKernel3
 	url = https://github.com/naidrahiqa/AnyKernel3.git
