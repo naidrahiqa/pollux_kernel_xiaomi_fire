@@ -49,10 +49,16 @@ cat <<EOF >> arch/arm64/configs/fire_defconfig
 # ReSukiSU
 CONFIG_KSU=y
 CONFIG_KSU_MANUAL_HOOK=y
-CONFIG_KSU_MULTI_MANAGER_SUPPORT=y
+# CONFIG_KSU_MULTI_MANAGER_SUPPORT is not set
 
 # Pollux
 CONFIG_LOCALVERSION="-Pollux"
+
+# Features
+CONFIG_PSI=y
+CONFIG_TCP_CONG_BBR=y
+CONFIG_DEFAULT_BBR=y
+CONFIG_WIREGUARD=y
 EOF
 ```
 
@@ -111,7 +117,7 @@ cd out && tar -I zstd -cf ../pollux-<tag>.tar.zst * && cd ..
 # Check kernel version
 strings out/arch/arm64/boot/Image.gz | grep "Pollux"
 
-# Check KernelSU symbols
+# Check ReSukiSU symbols
 strings out/vmlinux | grep kernelsu
 
 # Check size

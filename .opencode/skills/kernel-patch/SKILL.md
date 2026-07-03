@@ -48,12 +48,11 @@ Add to `arch/arm64/configs/fire_defconfig`:
 # ReSukiSU
 CONFIG_KSU=y
 CONFIG_KSU_MANUAL_HOOK=y
-CONFIG_KSU_MULTI_MANAGER_SUPPORT=y
 ```
 
 Note:
 - `CONFIG_KSU_MANUAL_HOOK=y`: Required for non-GKI kernels (< 5.10)
-- `CONFIG_KSU_MULTI_MANAGER_SUPPORT=y`: Support KernelSU/MKSU/RKSU/SukiSU managers
+- `CONFIG_KSU_MULTI_MANAGER_SUPPORT` is NOT enabled — use official ReSukiSU manager only
 
 ### 3. Verify
 
@@ -71,7 +70,7 @@ git commit -m "Pollux: Integrate ReSukiSU
 
 ReSukiSU: main branch (Resurrection KernelSU)
 Manual hook mode for non-GKI 4.19 kernel
-Multi-manager support enabled
+Single manager support (official ReSukiSU manager only)
 "
 ```
 
