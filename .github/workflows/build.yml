@@ -65,7 +65,8 @@ jobs:
     steps:
       - id: p
         run: |
-          echo "variant=${POLLUX_VARIANT}" >> $GITHUB_OUTPUT
+          VARIANT_NUM=$(echo "${POLLUX_VARIANT}" | cut -d' ' -f1)
+          echo "variant=${VARIANT_NUM}" >> $GITHUB_OUTPUT
           echo "defconfig=${DEFCONFIG}" >> $GITHUB_OUTPUT
           echo "lto=${LTO}" >> $GITHUB_OUTPUT
 
