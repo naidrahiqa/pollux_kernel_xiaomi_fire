@@ -25,7 +25,7 @@ cat << EOF
 - **Device:** Redmi 12 (fire) / MT6768
 - **Kernel:** ${POLLUX_BASE:-4.19.325-cip134}
 - **Toolchain:** Cyrene Clang 22.1.0
-- **Integration:** KernelSU-Next v3.2.0-legacy + SUSFS v2.2.0
+- **Integration:** ReSukiSU v4.1.0 (Manual Hook)
 - **Variant:** ${VARIANT}
 
 EOF

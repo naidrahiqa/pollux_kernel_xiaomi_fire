@@ -18,15 +18,27 @@ Integrates ReSukiSU (Resurrection KernelSU) into the Pollux kernel source.
 ### 1. Add ReSukiSU as Submodule
 
 ```bash
-git submodule add -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+git submodule add -b main https://github.com/ReSukiSU/ReSukiSU.git resukisu
 ```
 
 Verify structure:
 ```
-KernelSU/
+resukisu/
 ├── kernel/          # KSU kernel module source
 ├── uapi/            # KSU userspace API headers
 └── ...
+```
+
+### 1b. Create Symlink
+
+CI will create symlink at build time:
+```bash
+ln -sf resukisu/kernel drivers/kernelsu
+```
+
+For local builds, run:
+```bash
+ln -sf "$(realpath resukisu/kernel)" drivers/kernelsu
 ```
 
 ### 2. Configure Defconfig
@@ -46,7 +58,8 @@ Note:
 ### 3. Verify
 
 ```bash
-test -f KernelSU/kernel/Kconfig && echo "OK"
+test -f resukisu/kernel/Kconfig && echo "OK"
+test -L drivers/kernelsu || { echo "Symlink missing. Run: ln -sf resukisu/kernel drivers/kernelsu"; exit 1; }
 grep -q CONFIG_KSU=y arch/arm64/configs/fire_defconfig && echo "Defconfig OK"
 ```
 
@@ -72,5 +85,7 @@ Multi-manager support enabled
 ## Troubleshooting
 
 - **Submodule clone fails**: Check internet/GitHub access. Try `git submodule add --depth=1`
-- **Kconfig not found**: Verify `KernelSU/kernel/Kconfig` exists after clone
+- **Kconfig not found**: Verify `resukisu/kernel/Kconfig` exists after clone
+- **Symlink missing**: Run `ln -sf resukisu/kernel drivers/kernelsu`
 - **Manual hook compile errors**: Check ReSukiSU docs at https://resukisu.github.io/guide/manual-integrate.html
+- **Implicit declaration errors**: Move `extern` declaration above the function using the hook

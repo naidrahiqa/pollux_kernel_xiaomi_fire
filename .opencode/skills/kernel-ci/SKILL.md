@@ -14,7 +14,7 @@ Sets up GitHub Actions CI/CD for automated Pollux kernel builds.
 ├── workflows/
 │   ├── build.yml          ← Orchestrator: Telegram, versioning, changelog, release
 │   ├── build-core.yml     ← Reusable workflow: actual kernel build (deps, toolchain, compile)
-│   └── patch.yml          ← KernelSU/SUSFS patch workflow (manual trigger)
+│   └── patch.yml          ← (removed — no longer needed without SUSFS)
 ├── scripts/
 │   ├── version.sh         ← Version management (PolluxXDDMMYY)
 │   ├── generate-changelog.sh  ← Changelog from git log
@@ -81,8 +81,7 @@ Release: Download link
 • Cyrene Clang 22.1.0
 
 🔌 Integrations
-• KernelSU-Next legacy
-• SUSFS v2.2.0 (backport)
+• ReSukiSU v4.1.0 (Manual Hook)
 
 📋 Changelog
 • feat: add KSU support
@@ -168,13 +167,12 @@ Steps:
   1. Checkout (submodules: recursive)
   2. Install deps (system clang via apt + build tools)
   3. Setup cyrene_clang (NOT added to PATH — only for LD/AR/etc.)
-  4. Clone SUSFS backport + apply patches
-  5. Check for .rej files
-  6. make defconfig (CC=gcc)
-  7. make -j$(nproc) CC=clang (system clang), LD/AR/etc from cyrene_clang
-  8. Final check — set status output (NO exit 1!)
-  9. Package artifacts (tar.zst)
-  10. Upload as GitHub Actions artifact
+  4. Setup ReSukiSU symlink: ln -sf resukisu/kernel drivers/kernelsu
+  5. make defconfig (CC=gcc)
+  6. make -j$(nproc) CC=clang (system clang), LD/AR/etc from cyrene_clang
+  7. Final check — check build.log for errors + Image.gz existence (NO exit 1!)
+  8. Package artifacts (tar.zst)
+  9. Upload as GitHub Actions artifact
 
 Outputs:
   - status: "success" or "failed"
@@ -185,21 +183,7 @@ Key design:
 - LD/AR/NM/STRIP/OBJCOPY/OBJDUMP → from cyrene_clang toolchain
 - CROSS_COMPILE NOT set → Makefile.clang uses CLANG_TARGET_FLAGS_arm64
 - Final check uses `if: always()` so output is set even on failure
-
-### patch.yml — KernelSU + SUSFS Patcher
-
-```yaml
-Trigger: workflow_dispatch (manual)
-
-Steps:
-  1. Checkout + submodules
-  2. Install deps (patch, python3, wiggle)
-  3. Clone susf4ksu-legacy
-  4. Run apply.sh --kernelsu-next --mtk
-  5. Verify patches
-  6. Check .rej files
-  7. Commit + push
-```
+- Make exit code captured via PIPESTATUS for reliable failure detection
 
 ## Release Format
 
@@ -247,7 +231,7 @@ flash_boot;
 - **Device:** Redmi 12 (fire) / MT6768
 - **Kernel:** 4.19.325-cip134
 - **Toolchain:** Cyrene Clang 22.1.0
-- **Integration:** KernelSU-Next v3.2.0-legacy + SUSFS v2.2.0
+- **Integration:** ReSukiSU v4.1.0 (Manual Hook)
 - **Variant:** nightly
 
 ### 🚀 Features
@@ -266,7 +250,7 @@ flash_boot;
 
 ## Best Practices
 1. Set both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHANNEL_ID` before push
-2. Run `patch.yml` workflow first to apply KSU+SUSFS before building
+2. ReSukiSU is included as a git submodule — CI symlinks `drivers/kernelsu` → `resukisu/kernel` at build time
 3. Use `workflow_dispatch` for variant selection (nightly/stable/hotfix)
 4. Commit messages should use prefixes: `feat:`, `fix:`, `security:`, `update:`
 

@@ -5,7 +5,7 @@
 | Role | Skill ID | Skill File | Assigned Triggers | Status |
 |------|----------|------------|-------------------|--------|
 | **Kernel Initializer** | `kernel-init` | `skills/kernel-init/SKILL.md` | Repo init, clone base, CIP upgrade, LOCALVERSION | Active |
-| **Kernel Patcher** | `kernel-patch` | `skills/kernel-patch/SKILL.md` | Add KSU-Next, apply SUSFS, fixup MTK | Active |
+| **Kernel Patcher** | `kernel-patch` | `skills/kernel-patch/SKILL.md` | Add ReSukiSU as submodule, manual hooks | Active |
 | **Kernel Builder** | `kernel-build` | `skills/kernel-build/SKILL.md` | Build with cyrene_clang, packaging | Active |
 | **CI/CD Engineer** | `kernel-ci` | `skills/kernel-ci/SKILL.md` | GitHub Actions workflow, release automation | Active |
 
@@ -46,10 +46,12 @@
 - **Owner Role**: Kernel Patcher
 
 **Details**:
-- Adds ReSukiSU (`main` branch) via git submodule ke `KernelSU/`
+- Adds ReSukiSU (`main` branch) via git submodule ke `resukisu/`
 - Manual hook mode untuk non-GKI 4.19 kernel
 - Multi-manager support
-- No SUSFS — removed for stability
+- No SUSFS
+- Submodule path: `resukisu/` (not `KernelSU/`)
+- CI creates `drivers/kernelsu` → `resukisu/kernel` symlink at build time
 
 ---
 
@@ -596,11 +598,11 @@ issue: "kernel-init fails - clone timeout"
 solution: "Check internet connection. Use --depth=1 for shallow clone.
           Increase timeout_seconds in config."
 
-issue: "kernel-patch fails - patch rejects (.rej files)"
-solution: "1. Check .rej files: find . -name '*.rej'
-           2. Try wiggle fallback: wiggle --replace
-           3. Manually resolve conflicts
-           4. Re-run apply.sh"
+issue: "kernel-patch fails - submodule error"
+solution: "1. Check .gitmodules: cat .gitmodules
+           2. Re-init: git submodule update --init --recursive
+           3. Verify path: ls -la resukisu/
+           4. Symlink: ln -sf resukisu/kernel drivers/kernelsu"
 
 issue: "kernel-build fails - compile error"
 solution: "1. Check build.log: tail -50 out/build.log
@@ -608,10 +610,11 @@ solution: "1. Check build.log: tail -50 out/build.log
            3. Try different LTO mode: LTO=none
            4. Check toolchain: clang --version"
 
-issue: "kernel-ci fails - workflow syntax error"
-solution: "1. Validate YAML: python3 -c 'import yaml; yaml.safe_load(open(\".github/workflows/build.yml\"))'
-           2. Check indentation (YAML is strict)
-           3. Verify actions versions exist"
+issue: "kernel-ci fails - build error not detected"
+solution: "1. Check final-check step in build-core.yml
+           2. Verify MAKE_EXIT_CODE captured: grep -i 'make.*Error' build.log
+           3. Check Image.gz exists: ls -la out/arch/arm64/boot/Image.gz
+           4. Check CI logs for 'error:' pattern"
 ```
 
 ### If Workflow Hangs
@@ -634,8 +637,8 @@ action: "Run with --batch mode. Use apply.sh (not manual patch)"
 | `patch: **** malformed patch` | Patch format mismatch | Check patch file encoding (LF, not CRLF) |
 | `clang: not found` | Toolchain not installed | Run `get_clang.sh` or set PATH |
 | `*** Configuration file "fire_defconfig" not found` | Defconfig missing | Create from `mt6768_defconfig` |
-| `KernelSU-Next: No such file or directory` | Submodule not init'd | Run `git submodule update --init` |
-| `susfs.c: No such file` | SUSFS not applied | Run `apply.sh --kernelsu-next --mtk` |
+| `resukisu/: No such file or directory` | Submodule not init'd | Run `git submodule update --init --recursive` |
+| `drivers/kernelsu: No such file or directory` | Symlink missing | Run `ln -sf resukisu/kernel drivers/kernelsu` |
 
 ---
 
@@ -649,7 +652,7 @@ opencode-agent run kernel-init --path .
 # Output: Repo initialized with v4.19.325-cip134 + initial commit
 
 opencode-agent run kernel-patch --path .
-# Output: KernelSU-Next added + SUSFS patches applied + verified
+# Output: ReSukiSU added as submodule + manual hooks verified
 
 opencode-agent run kernel-ci --path . --create-workflow
 # Output: .github/workflows/build.yml created
@@ -660,7 +663,7 @@ opencode-agent workflow run full-setup --path .
 
 **Expected Result**:
 - Repo siap dengan base kernel + CIP upstream
-- KernelSU-Next + SUSFS terintegrasi
+- ReSukiSU terintegrasi (manual hooks)
 - GitHub Actions workflow siap
 - Tinggal `git push origin main`
 
@@ -701,19 +704,22 @@ git push origin main --tags
 
 ---
 
-### Example 4: Patch Update Only
+### Example 4: Update ReSukiSU Submodule
 
 ```bash
-# When KernelSU-Next or SUSFS has updates
-opencode-agent run kernel-patch --path . --force-reapply
+# When ReSukiSU has updates
+cd resukisu
+git fetch origin main
+git checkout origin/main
+cd ..
+git add resukisu
+git commit -m "update: bump ReSukiSU"
 ```
 
 **What happens**:
-1. Fetches latest SUSFS patches
-2. Re-applies all patches (idempotent)
-3. Runs fixup scripts
-4. Verifies everything
-5. Ready to commit
+1. Fetches latest ReSukiSU commits
+2. Updates submodule pointer
+3. Ready to commit and push
 
 ---
 
@@ -728,4 +734,4 @@ opencode-agent run kernel-patch --path . --force-reapply
 | **AnyKernel3** | `naidrahiqa/AnyKernel3` | `master` (flashable zip creator) |
 | **Output repo** | `naidrahiqa/pollux_kernel_xiaomi_fire` | `main` |
 
-Device: **Xiaomi Fire (Redmi 12)** — MT6768 / Helio G88
+Device: **Xiaomi Fire (Redmi 9A/9C)** — MT6768 / Helio G25/G35

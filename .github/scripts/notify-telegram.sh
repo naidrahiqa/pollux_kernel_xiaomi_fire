@@ -43,7 +43,7 @@ REPO_URL="https://github.com/${GITHUB_REPOSITORY}"
 # Toolchain info
 CLANG_VERSION="${CLANG_VERSION:-Cyrene Clang 22.1.0}"
 CLANG_URL="https://github.com/naidrahiqa/cyrene_clang"
-KSU_VERSION="${KERNELSU_VERSION:-KernelSU-Next v3.2.0-legacy}"
+KSU_VERSION="${KERNELSU_VERSION:-ReSukiSU v4.1.0}"
 
 function send_to_channel() {
     local target="$1"
@@ -95,7 +95,7 @@ function build_success() {
 
 <b>🔌 Integrations</b>
 • ${KSU_VERSION}
-• SUSFS v2.2.0 (backport)
+• Manual Hook (Non-GKI)
 
 <b>📋 Changelog</b>
 <pre>${changelog_text}</pre>
