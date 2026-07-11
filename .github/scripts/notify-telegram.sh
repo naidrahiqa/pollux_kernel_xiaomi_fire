@@ -56,16 +56,16 @@ function send_to_channel() {
 }
 
 function build_start() {
-    local msg="<b>🔨 Pollux Kernel Build Started</b>
+    local msg="🔨 <b>POLLUX KERNEL · Construction Started</b>
+=====================================
+⚙️ <b>Build:</b> #${BUILD_NUM}
+📱 <b>Device:</b> Redmi 12 (fire) / MT6768
+🌐 <b>Tag:</b> <code>${TAG}</code>
+📌 <b>Commit:</b> <code>${SHA}</code> (${COMMIT_MSG})
+=====================================
+⏳ <i>Waiting for the forge to cool...</i>
 
-<b>Device:</b> Redmi 12 (fire) / MT6768
-<b>Build:</b> #${BUILD_NUM}
-<b>Tag:</b> <code>${TAG}</code>
-<b>Commit:</b> <code>${SHA}</code>
-<b>Message:</b> ${COMMIT_MSG}
-<b>Run:</b> <a href='${BUILD_URL}'>GitHub Actions</a>
-
-⏳ Waiting for build to complete..."
+🔍 <a href='${BUILD_URL}'>Monitor construction log</a>"
     send_to_channel "$CHANNEL_ID" "$msg"
     echo "✅ Build start notification sent."
 }
@@ -78,29 +78,29 @@ function build_success() {
         changelog_text=$(head -30 "$changelog_file")
     fi
 
-    local msg="<b>✅ Pollux ${VERSION} Released!</b>
+    local msg="🛠️ <b>POLLUX KERNEL · Forged Successfully</b>
+=====================================
+📱 <b>Device:</b> Redmi 12 (fire) / MT6768
+🌐 <b>Tag:</b> <code>${TAG}</code>
+📌 <b>Commit:</b> <code>${SHA}</code>
+=====================================
 
-<b>Device:</b> Redmi 12 (fire) / MT6768
-<b>Tag:</b> <code>${TAG}</code>
-<b>Commit:</b> <code>${SHA}</code>
-<b>Release:</b> <a href='${REPO_URL}/releases/tag/${TAG}'>Download</a>
+📦 <b>DOWNLOADS</b>
+• <a href='${REPO_URL}/releases/tag/${TAG}'>Flashable Zip (AnyKernel3)</a> — via custom recovery
+• <a href='${REPO_URL}/releases/tag/${TAG}'>Image.gz</a> — manual flash via fastboot
+• <a href='${REPO_URL}/releases/tag/${TAG}'>tar.zst</a> — source/build archive
 
-<b>📦 Downloads</b>
-• Flashable zip (AnyKernel3) — via custom recovery
-• Image.gz — manual flash via fastboot
-• tar.zst — source/build archive
-
-<b>🛠 Toolchains</b>
-• <a href='${CLANG_URL}'>Cyrene Clang</a>: ${CLANG_VERSION}
-
-<b>🔌 Integrations</b>
+🔌 <b>INTEGRATIONS</b>
 • ${KSU_VERSION}
 • Manual Hook (Non-GKI)
 
-<b>📋 Changelog</b>
-<pre>${changelog_text}</pre>
+🛠 <b>TOOLCHAINS</b>
+• <a href='${CLANG_URL}'>Cyrene Clang</a>: ${CLANG_VERSION}
 
-<a href='${REPO_URL}'>Pollux Kernel</a> | <a href='${BUILD_URL}'>Build Log</a>"
+📋 <b>CHANGELOG</b>
+<pre>${changelog_text}</pre>
+=====================================
+🔗 <a href='${REPO_URL}'>Pollux Repository</a> · 🔍 <a href='${BUILD_URL}'>Build Log</a>"
     send_to_channel "$CHANNEL_ID" "$msg"
     echo "✅ Build success notification sent."
 }
@@ -140,23 +140,39 @@ function build_failed() {
         fi
     fi
 
-    local msg="<b>📢 Pollux Kernel Info</b>
-<b>❌ Pollux Kernel Build #${BUILD_NUM} Failed</b>
+    # 1. Kirim status ringkas ke CHANNEL_ID (Update channel) jika terkonfigurasi
+    if [ -n "$CHANNEL_ID" ]; then
+        local simple_msg="🔨 <b>POLLUX KERNEL · Forge Halted</b>
+=====================================
+⚙️ <b>Build:</b> #${BUILD_NUM}
+📱 <b>Device:</b> Redmi 12 (fire) / MT6768
+🌐 <b>Tag:</b> <code>${TAG}</code>-$(date +%Y%m%d)-${SHA}
+⚠️ <b>Status:</b> ❌ CONSTRUCTION FAILED
+=====================================
+🔍 <a href='${BUILD_URL}'>Check Forge Logs</a>"
+        send_to_channel "$CHANNEL_ID" "$simple_msg"
+        echo "✅ Simple build failure notification sent to update channel."
+    fi
+
+    # 2. Kirim detail log error ke ERROR_CHANNEL_ID (Dump channel)
+    # Jika ERROR_CHANNEL_ID kosong, fallback kirim ke CHANNEL_ID
+    local dump_target="${ERROR_CHANNEL_ID:-$CHANNEL_ID}"
+    if [ -n "$dump_target" ]; then
+        local detail_msg="📢 <b>Pollux Kernel Info</b>
+❌ <b>Pollux Kernel Build #${BUILD_NUM} Failed</b>
 
 <b>Device:</b> Redmi 12 (fire) / MT6768
 <b>Tag:</b> <code>${TAG}</code>-$(date +%Y%m%d)-${SHA}
 <b>Error:</b> <b>${error_type}</b>
 <b>Step:</b> ${failed_step}
-
+=====================================
 <b>Error Context:</b>
 <pre><code>${error_context}</code></pre>
-
-<a href='${BUILD_URL}'>View Build Log</a>"
-
-    # Send to ERROR channel if set, otherwise fallback to main channel
-    local target="${ERROR_CHANNEL_ID:-$CHANNEL_ID}"
-    send_to_channel "$target" "$msg"
-    echo "✅ Build failure notification sent to error channel."
+=====================================
+🔍 <a href='${BUILD_URL}'>View Build Log</a>"
+        send_to_channel "$dump_target" "$detail_msg"
+        echo "✅ Detailed error log notification sent."
+    fi
 }
 
 case "$STATUS" in
